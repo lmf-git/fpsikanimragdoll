@@ -797,7 +797,7 @@ func drop_weapon():
 	equipped_weapon = null
 
 func _update_weapon_position():
-	"""Update weapon position to follow hand bones with IK"""
+	"""Update weapon position to follow hand bones and update IK targets"""
 	if not equipped_weapon or not skeleton or right_hand_bone_id < 0:
 		return
 
@@ -824,21 +824,20 @@ func _update_weapon_position():
 	weapon_basis = weapon_basis.rotated(weapon_basis.z, weapon_rotation_offset.z)
 	equipped_weapon.global_transform.basis = weapon_basis
 
-	# For two-handed weapons, position left hand at secondary grip
-	if equipped_weapon.is_two_handed and left_hand_bone_id >= 0 and equipped_weapon.secondary_grip:
-		var secondary_grip_pos = equipped_weapon.secondary_grip.global_position
+	# Update IK targets to weapon grip points
+	var ik_targets_node = get_node_or_null("IKTargets")
+	if ik_targets_node:
+		# Right hand IK target to main grip
+		if equipped_weapon.main_grip:
+			var right_hand_target = ik_targets_node.get_node_or_null("RightHandTarget")
+			if right_hand_target:
+				right_hand_target.global_position = equipped_weapon.main_grip.global_position
 
-		# Get left hand current pose
-		var left_hand_pose = skeleton.get_bone_pose(left_hand_bone_id)
-
-		# Calculate target position for left hand (simplified IK - just point towards grip)
-		var left_hand_global = skeleton.global_transform * skeleton.get_bone_global_pose(left_hand_bone_id)
-		var direction_to_grip = (secondary_grip_pos - left_hand_global.origin).normalized()
-
-		# Rotate left hand to point at grip (basic aim IK)
-		var target_basis = left_hand_pose.basis.looking_at(direction_to_grip, Vector3.UP)
-		left_hand_pose.basis = left_hand_pose.basis.slerp(target_basis, 0.5)
-		skeleton.set_bone_pose(left_hand_bone_id, left_hand_pose)
+		# Left hand IK target to secondary grip (for two-handed weapons)
+		if equipped_weapon.is_two_handed and equipped_weapon.secondary_grip:
+			var left_hand_target = ik_targets_node.get_node_or_null("LeftHandTarget")
+			if left_hand_target:
+				left_hand_target.global_position = equipped_weapon.secondary_grip.global_position
 
 func _process(_delta):
 	# Update weapon position to follow hand
