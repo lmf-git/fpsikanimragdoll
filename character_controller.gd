@@ -375,21 +375,31 @@ func _create_ragdoll_bones():
 		var bias = 0.95     # Very high bias = rigid response
 
 		# Ultra-specific constraints - allow natural bending but prevent excessive movement
+		# Store separate forward/backward limits for torso (for HINGE joints)
+		var forward_limit = swing_limit
+		var backward_limit = swing_limit
+
 		if bone_suffix in ["Hips"]:
-			# Hips/pelvis - very restricted but allow slight bend for natural rest
-			swing_limit = deg_to_rad(15)  # Small amount for natural posing
-			twist_limit = deg_to_rad(5)   # Minimal twist
+			# Hips/pelvis - very restricted backward, allow some forward bend
+			forward_limit = deg_to_rad(15)   # Can bend forward for natural posing
+			backward_limit = deg_to_rad(5)   # Very limited backward bend to prevent arching
+			swing_limit = forward_limit  # For CONE joints if used
+			twist_limit = deg_to_rad(5)  # Minimal twist
 			damping = 0.98
 			bias = 0.98
 		elif bone_suffix in ["Spine"]:
-			# Lower spine - allow some flex for natural bending
-			swing_limit = deg_to_rad(20)  # Allow forward/back bend
+			# Lower spine - allow forward flex, restrict backward
+			forward_limit = deg_to_rad(20)   # Can bend forward
+			backward_limit = deg_to_rad(10)  # Limited backward bend
+			swing_limit = forward_limit  # For CONE joints if used
 			twist_limit = deg_to_rad(10)  # Some twist for natural movement
 			damping = 0.95
 			bias = 0.95
 		elif bone_suffix in ["Chest", "Upper_Chest"]:
-			# Upper torso - moderate restriction
-			swing_limit = deg_to_rad(15)  # Less flex than lower spine
+			# Upper torso - very restricted backward
+			forward_limit = deg_to_rad(15)  # Can bend forward
+			backward_limit = deg_to_rad(5)  # Very limited backward bend
+			swing_limit = forward_limit  # For CONE joints if used
 			twist_limit = deg_to_rad(8)   # Limited twist
 			damping = 0.96
 			bias = 0.96
@@ -437,9 +447,9 @@ func _create_ragdoll_bones():
 			damping = 0.998
 			bias = 0.998
 		elif bone_suffix in ["Upper_Arm", "L_Upper_Arm", "R_Upper_Arm"]:
-			# Upper arms - allow natural shoulder movement
-			swing_limit = deg_to_rad(80)   # Can swing up/down/side
-			twist_limit = deg_to_rad(30)   # Some rotation at shoulder
+			# Upper arms - allow natural shoulder movement but prevent excessive backward swing
+			swing_limit = deg_to_rad(60)   # Reduced from 80 to prevent backward bending
+			twist_limit = deg_to_rad(20)   # Reduced from 30 to prevent excessive rotation
 			damping = 0.85
 			bias = 0.85
 		elif bone_suffix in ["Lower_Arm", "L_Lower_Arm", "R_Lower_Arm"]:
@@ -465,11 +475,12 @@ func _create_ragdoll_bones():
 		if use_hinge:
 			# Hinge joints use different constraint properties
 			# For limbs (knees/elbows): only bend one way (forward, NOT backward/hyperextension)
-			# For torso (spine/neck/head): allow bending both ways (forward/back)
-			if bone_suffix in ["Spine", "Chest", "Upper_Chest", "Neck", "Head"]:
-				# Torso can bend forward and backward
-				physical_bone.set("joint_constraints/angular_limit_lower", -swing_limit)
-				physical_bone.set("joint_constraints/angular_limit_upper", swing_limit)
+			# For torso (spine/neck/head): allow bending both ways but with asymmetric limits
+			if bone_suffix in ["Hips", "Spine", "Chest", "Upper_Chest", "Neck", "Head"]:
+				# Torso can bend forward and backward, but with separate limits
+				# Negative = backward, Positive = forward
+				physical_bone.set("joint_constraints/angular_limit_lower", -backward_limit)  # Restricted backward
+				physical_bone.set("joint_constraints/angular_limit_upper", forward_limit)    # More forward bend
 			else:
 				# Limbs only bend forward, NO backward bending (prevents hyperextension)
 				# 0 = straight/rest position, positive = bend forward, negative = hyperextend (bad!)
