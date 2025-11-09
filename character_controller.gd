@@ -82,8 +82,8 @@ var weapon_state: WeaponState = WeaponState.READY
 var is_weapon_sheathed: bool = false  # Toggle for sheathed state
 
 # Weapon positioning - skeleton-relative offsets
-@export var aim_weapon_offset: Vector3 = Vector3(0.08, 0.35, -1.3)  # Offset when aiming down sights (higher and more forward, slightly offset)
-@export var ready_weapon_offset: Vector3 = Vector3(0.2, 0.1, -1.2)  # Offset when ready/moving (higher and more forward)
+@export var aim_weapon_offset: Vector3 = Vector3(0.15, 0.35, -1.3)  # Offset when aiming down sights (higher and more forward, further to the right)
+@export var ready_weapon_offset: Vector3 = Vector3(0.25, 0.1, -1.2)  # Offset when ready/moving (higher and more forward, spaced outward)
 @export var sheathed_weapon_offset: Vector3 = Vector3(0.5, -0.6, 0.2)  # Offset when sheathed at side
 @export var weapon_transition_speed: float = 8.0  # Speed of state transitions
 
@@ -109,6 +109,9 @@ var current_hand_recoil: Vector3 = Vector3.ZERO  # Current hand recoil offset
 var muzzle_flash_light: OmniLight3D = null
 var muzzle_flash_timer: float = 0.0
 const MUZZLE_FLASH_DURATION: float = 0.05  # 50ms flash
+
+# Gunshot audio
+var gunshot_audio: AudioStreamPlayer3D = null
 
 # Crosshair UI
 var crosshair_ui: Control = null
@@ -349,6 +352,17 @@ func _create_ik_system():
 	right_elbow_pole.name = "RightElbowPole"
 	ik_targets_node.add_child(right_elbow_pole)
 	right_elbow_pole.position = Vector3(0.3, 1.0, 0.5)  # To the right, forward of body
+
+	# Create wrist pole targets for refined hand/wrist positioning
+	var left_wrist_pole = Node3D.new()
+	left_wrist_pole.name = "LeftWristPole"
+	ik_targets_node.add_child(left_wrist_pole)
+	left_wrist_pole.position = Vector3(-0.2, 1.0, 0.3)  # Closer to body than elbow
+
+	var right_wrist_pole = Node3D.new()
+	right_wrist_pole.name = "RightWristPole"
+	ik_targets_node.add_child(right_wrist_pole)
+	right_wrist_pole.position = Vector3(0.2, 1.0, 0.3)  # Closer to body than elbow
 
 	# Create LeftHandIK
 	if left_hand_target:
@@ -1371,6 +1385,9 @@ func _shoot_weapon():
 	# Trigger muzzle flash
 	_trigger_muzzle_flash()
 
+	# Play gunshot sound
+	_play_gunshot_sound()
+
 	# Apply recoil
 	_apply_recoil()
 
@@ -1406,35 +1423,46 @@ func _trigger_muzzle_flash():
 	var flash_particles = CPUParticles3D.new()
 	equipped_weapon.muzzle_point.add_child(flash_particles)
 
-	# Configure flash particles
+	# Configure flash particles - ENHANCED FOR VISIBILITY
 	flash_particles.emitting = true
 	flash_particles.one_shot = true
 	flash_particles.explosiveness = 1.0
-	flash_particles.amount = 10
-	flash_particles.lifetime = 0.1
-	flash_particles.speed_scale = 3.0
+	flash_particles.amount = 50  # More particles for better visibility
+	flash_particles.lifetime = 0.15  # Slightly longer
+	flash_particles.speed_scale = 4.0
 
 	# Emission shape - cone forward
 	flash_particles.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
-	flash_particles.emission_sphere_radius = 0.02
+	flash_particles.emission_sphere_radius = 0.05  # Larger emission area
 	flash_particles.direction = Vector3(0, 0, 1)  # Forward in local space
-	flash_particles.spread = 15.0
+	flash_particles.spread = 20.0
 
 	# Particle properties
-	flash_particles.initial_velocity_min = 3.0
-	flash_particles.initial_velocity_max = 6.0
+	flash_particles.initial_velocity_min = 5.0
+	flash_particles.initial_velocity_max = 10.0
 	flash_particles.gravity = Vector3.ZERO
 
-	# Visual - bright yellow/orange flash
-	flash_particles.scale_amount_min = 0.1
-	flash_particles.scale_amount_max = 0.15
-	flash_particles.color = Color(1.0, 0.9, 0.5, 1.0)
+	# Visual - MUCH brighter and larger particles
+	flash_particles.scale_amount_min = 0.3
+	flash_particles.scale_amount_max = 0.5
+	flash_particles.color = Color(1.5, 1.2, 0.7, 1.0)  # Oversaturated for HDR bloom effect
 
 	# Fade out quickly
 	var gradient = Gradient.new()
 	gradient.add_point(0.0, Color(1, 1, 1, 1))
 	gradient.add_point(1.0, Color(1, 1, 1, 0))
 	flash_particles.color_ramp = gradient
+
+	# Add emissive material for glow effect
+	var material = StandardMaterial3D.new()
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED  # Full brightness
+	material.emission_enabled = true
+	material.emission = Color(1.5, 1.2, 0.7)  # Bright yellow emission
+	material.emission_energy_multiplier = 3.0  # Very bright
+	material.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED  # Face camera
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.blend_mode = BaseMaterial3D.BLEND_MODE_ADD  # Additive blending for brightness
+	flash_particles.material_override = material
 
 	# Auto-delete
 	var timer = get_tree().create_timer(flash_particles.lifetime + 0.05)
@@ -1444,14 +1472,52 @@ func _trigger_muzzle_flash():
 	if not muzzle_flash_light:
 		muzzle_flash_light = OmniLight3D.new()
 		muzzle_flash_light.light_color = Color(1.0, 0.9, 0.6)  # Bright yellow-white
-		muzzle_flash_light.light_energy = 10.0  # Much brighter
-		muzzle_flash_light.omni_range = 8.0
-		muzzle_flash_light.omni_attenuation = 2.0
+		muzzle_flash_light.light_energy = 30.0  # VERY bright for high visibility
+		muzzle_flash_light.omni_range = 12.0  # Larger range
+		muzzle_flash_light.omni_attenuation = 1.5
+		muzzle_flash_light.shadow_enabled = false  # No shadows for better performance and visibility
 		equipped_weapon.muzzle_point.add_child(muzzle_flash_light)
 
 	# Enable the light and start timer
 	muzzle_flash_light.visible = true
 	muzzle_flash_timer = MUZZLE_FLASH_DURATION
+
+func _play_gunshot_sound():
+	"""Play procedurally generated gunshot sound"""
+	if not equipped_weapon or not equipped_weapon.muzzle_point:
+		return
+
+	# Create audio player if it doesn't exist
+	if not gunshot_audio:
+		gunshot_audio = AudioStreamPlayer3D.new()
+		gunshot_audio.max_distance = 50.0  # Audible from 50 meters
+		gunshot_audio.attenuation_model = AudioStreamPlayer3D.ATTENUATION_INVERSE_DISTANCE
+		gunshot_audio.unit_size = 5.0  # Loud sound
+		add_child(gunshot_audio)
+
+	# Create a procedural gunshot sound using AudioStreamGenerator
+	var generator = AudioStreamGenerator.new()
+	generator.mix_rate = 44100.0
+	generator.buffer_length = 0.1  # 100ms buffer
+
+	gunshot_audio.stream = generator
+	gunshot_audio.play()
+
+	# Fill the audio buffer with gunshot-like noise
+	await get_tree().process_frame
+	var playback: AudioStreamGeneratorPlayback = gunshot_audio.get_stream_playback()
+	if playback:
+		var samples_to_fill = 4410  # 0.1 second at 44100 Hz
+		for i in range(samples_to_fill):
+			var t = float(i) / samples_to_fill
+			# Create gunshot envelope: sharp attack, quick decay
+			var envelope = exp(-t * 20.0)  # Exponential decay
+			# Mix of sine waves and noise for gunshot character
+			var low_freq = sin(t * 200.0 * TAU) * 0.5  # Low boom
+			var mid_freq = sin(t * 800.0 * TAU) * 0.3  # Mid crack
+			var noise = (randf() * 2.0 - 1.0) * 0.2  # Random noise
+			var sample = (low_freq + mid_freq + noise) * envelope * 0.5
+			playback.push_frame(Vector2(sample, sample))
 
 func _apply_recoil():
 	"""Apply recoil to camera and weapon"""
@@ -1745,6 +1811,23 @@ func _update_weapon_ik_targets():
 		var body_basis = Basis(Vector3.UP, body_rotation_y)
 		var elbow_offset = Vector3(-0.2, 0.0, -0.2)  # Left and forward
 		left_elbow_pole.global_position = left_hand_target.global_position + body_basis * elbow_offset
+
+	# Update wrist pole positions for refined hand/wrist control
+	var left_wrist_pole = ik_targets_node.get_node_or_null("LeftWristPole")
+	var right_wrist_pole = ik_targets_node.get_node_or_null("RightWristPole")
+
+	if right_hand_target and right_wrist_pole:
+		# Position right wrist pole closer to hand, slightly down and outward
+		# This helps guide the wrist orientation for proper weapon grip
+		var body_basis = Basis(Vector3.UP, body_rotation_y)
+		var wrist_offset = Vector3(0.1, -0.05, -0.1)  # Slightly right, down, and forward
+		right_wrist_pole.global_position = right_hand_target.global_position + body_basis * wrist_offset
+
+	if left_hand_target and left_wrist_pole:
+		# Position left wrist pole for support hand positioning
+		var body_basis = Basis(Vector3.UP, body_rotation_y)
+		var wrist_offset = Vector3(-0.1, -0.05, -0.1)  # Slightly left, down, and forward
+		left_wrist_pole.global_position = left_hand_target.global_position + body_basis * wrist_offset
 
 func _update_weapon_to_hand():
 	"""Position weapon to follow IK-transformed hand bone (called AFTER IK is applied)"""
