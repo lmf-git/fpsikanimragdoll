@@ -101,6 +101,10 @@ var current_sway: Vector3 = Vector3.ZERO  # Current sway offset
 var current_recoil_rotation: Vector3 = Vector3.ZERO  # Current recoil rotation offset
 var current_recoil_position: Vector3 = Vector3.ZERO  # Current recoil position offset
 
+# Hand IK recoil
+@export var hand_recoil_offset: Vector3 = Vector3(0.0, -0.05, 0.08)  # Hand kicks back and down when shooting
+var current_hand_recoil: Vector3 = Vector3.ZERO  # Current hand recoil offset
+
 # Muzzle flash
 var muzzle_flash_light: OmniLight3D = null
 var muzzle_flash_timer: float = 0.0
@@ -1378,6 +1382,9 @@ func _apply_recoil():
 	# Add recoil position (weapon pushes back)
 	current_recoil_position += recoil_position
 
+	# Add hand IK recoil (hands kick back)
+	current_hand_recoil += hand_recoil_offset
+
 	# Randomize recoil slightly for more natural feel
 	var random_yaw = randf_range(-1.0, 1.0)
 	current_recoil_rotation.y += random_yaw
@@ -1387,6 +1394,7 @@ func _update_recoil(delta: float):
 	# Recover from recoil smoothly
 	current_recoil_rotation = current_recoil_rotation.lerp(Vector3.ZERO, recoil_recovery_speed * delta)
 	current_recoil_position = current_recoil_position.lerp(Vector3.ZERO, recoil_recovery_speed * delta)
+	current_hand_recoil = current_hand_recoil.lerp(Vector3.ZERO, recoil_recovery_speed * delta)
 
 	# Apply recoil to camera rotation
 	if fps_camera or tps_camera:
@@ -1539,7 +1547,10 @@ func _update_weapon_ik_targets():
 		# Use body_rotation_y (where character faces) not camera_rotation.y (where camera looks)
 		# This prevents hand from moving left/right when camera orbits in TPS
 		var body_basis = Basis(Vector3.UP, body_rotation_y)  # Character's facing, not camera
-		var target_pos = anchor_transform.origin + body_basis * base_offset
+
+		# Apply hand recoil to offset
+		var final_offset = base_offset + current_hand_recoil
+		var target_pos = anchor_transform.origin + body_basis * final_offset
 
 		# DEBUG: Track target movement when state changes
 		if weapon_state == WeaponState.AIMING and right_hand_target.global_position.distance_to(target_pos) > 0.01:
