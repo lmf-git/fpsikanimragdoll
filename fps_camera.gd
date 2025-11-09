@@ -4,7 +4,7 @@ class_name FPSCamera
 # This camera follows the character's head bone for authentic FPS view
 @export var skeleton: Skeleton3D
 @export var head_bone_name: String = "characters3d.com___Head"
-@export var head_offset: Vector3 = Vector3(0, 0.1, 0)  # Offset from head bone (eyes position)
+@export var head_offset: Vector3 = Vector3(0, 0.1, 0.15)  # Offset from head bone (eyes position, forward from face)
 
 var head_bone_id: int = -1
 var skeleton_mesh: Node3D
