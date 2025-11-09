@@ -73,8 +73,8 @@ var weapon_state: WeaponState = WeaponState.READY
 var is_weapon_sheathed: bool = false  # Toggle for sheathed state
 
 # Weapon positioning - skeleton-relative offsets
-@export var aim_weapon_offset: Vector3 = Vector3(0.0, 0.35, -0.6)  # Offset when aiming down sights (higher and more forward, centered)
-@export var ready_weapon_offset: Vector3 = Vector3(0.15, 0.1, -0.5)  # Offset when ready/moving (higher and more forward)
+@export var aim_weapon_offset: Vector3 = Vector3(0.0, 0.35, -0.75)  # Offset when aiming down sights (higher and more forward, centered)
+@export var ready_weapon_offset: Vector3 = Vector3(0.15, 0.1, -0.65)  # Offset when ready/moving (higher and more forward)
 @export var sheathed_weapon_offset: Vector3 = Vector3(0.5, -0.6, 0.2)  # Offset when sheathed at side
 @export var weapon_transition_speed: float = 8.0  # Speed of state transitions
 
@@ -84,6 +84,18 @@ var is_weapon_sheathed: bool = false  # Toggle for sheathed state
 @export var movement_sway_multiplier: float = 2.0  # Extra sway when moving
 var sway_time: float = 0.0  # Time accumulator for sway
 var current_sway: Vector3 = Vector3.ZERO  # Current sway offset
+
+# Weapon recoil
+@export var recoil_rotation: Vector3 = Vector3(-5.0, 0.0, 0.0)  # Rotation recoil in degrees (pitch, yaw, roll)
+@export var recoil_position: Vector3 = Vector3(0.0, 0.0, 0.05)  # Position recoil (backward push)
+@export var recoil_recovery_speed: float = 10.0  # How fast recoil returns to normal
+var current_recoil_rotation: Vector3 = Vector3.ZERO  # Current recoil rotation offset
+var current_recoil_position: Vector3 = Vector3.ZERO  # Current recoil position offset
+
+# Muzzle flash
+var muzzle_flash_light: OmniLight3D = null
+var muzzle_flash_timer: float = 0.0
+const MUZZLE_FLASH_DURATION: float = 0.05  # 50ms flash
 
 # Ragdoll bone configuration - bones that will have physics
 const RAGDOLL_BONES = [
@@ -882,6 +894,9 @@ func _physics_process(delta):
 	if head_look_enabled and skeleton and head_bone_id >= 0:
 		_update_head_look(delta)
 
+	# Update recoil recovery
+	_update_recoil(delta)
+
 	# Detect nearby weapons for pickup
 	_detect_nearby_weapon()
 
@@ -1222,6 +1237,12 @@ func _shoot_weapon():
 	# Call weapon shoot function
 	var hit_result = equipped_weapon.shoot(shoot_from, shoot_direction)
 
+	# Trigger muzzle flash
+	_trigger_muzzle_flash()
+
+	# Apply recoil
+	_apply_recoil()
+
 	# Handle hit result
 	if hit_result.hit:
 		var hit_node = hit_result.collider
@@ -1241,6 +1262,55 @@ func _find_parent_character(node: Node) -> Node:
 			return current
 		current = current.get_parent()
 	return null
+
+func _trigger_muzzle_flash():
+	"""Create and trigger muzzle flash effect at weapon muzzle"""
+	if not equipped_weapon or not equipped_weapon.muzzle_point:
+		return
+
+	# Create muzzle flash light if it doesn't exist
+	if not muzzle_flash_light:
+		muzzle_flash_light = OmniLight3D.new()
+		muzzle_flash_light.light_color = Color(1.0, 0.8, 0.4)  # Orange-yellow flash
+		muzzle_flash_light.light_energy = 3.0
+		muzzle_flash_light.omni_range = 5.0
+		muzzle_flash_light.omni_attenuation = 2.0
+		equipped_weapon.muzzle_point.add_child(muzzle_flash_light)
+
+	# Enable the light and start timer
+	muzzle_flash_light.visible = true
+	muzzle_flash_timer = MUZZLE_FLASH_DURATION
+
+func _apply_recoil():
+	"""Apply recoil to camera and weapon"""
+	# Add recoil rotation (camera kick up)
+	current_recoil_rotation += recoil_rotation
+
+	# Add recoil position (weapon pushes back)
+	current_recoil_position += recoil_position
+
+	# Randomize recoil slightly for more natural feel
+	var random_yaw = randf_range(-1.0, 1.0)
+	current_recoil_rotation.y += random_yaw
+
+func _update_recoil(delta: float):
+	"""Update recoil recovery in _process"""
+	# Recover from recoil smoothly
+	current_recoil_rotation = current_recoil_rotation.lerp(Vector3.ZERO, recoil_recovery_speed * delta)
+	current_recoil_position = current_recoil_position.lerp(Vector3.ZERO, recoil_recovery_speed * delta)
+
+	# Apply recoil to camera rotation
+	if fps_camera or tps_camera:
+		var camera = fps_camera if camera_mode == 0 else tps_camera
+		# Apply recoil as additional rotation on top of normal camera rotation
+		camera_rotation.x += deg_to_rad(current_recoil_rotation.x) * delta * 2.0  # Gradual camera kick
+		camera_rotation.y += deg_to_rad(current_recoil_rotation.y) * delta * 2.0
+
+	# Update muzzle flash timer
+	if muzzle_flash_timer > 0.0:
+		muzzle_flash_timer -= delta
+		if muzzle_flash_timer <= 0.0 and muzzle_flash_light:
+			muzzle_flash_light.visible = false
 
 func _apply_partial_ragdoll(bone_name: String, impulse: Vector3):
 	"""Apply partial ragdoll effect to a specific bone"""
@@ -1355,10 +1425,19 @@ func _update_weapon_ik_targets():
 	if right_hand_target:
 		var base_offset = target_offset + current_sway
 
-		# When weapon is equipped, hand should only move UP/DOWN, not LEFT/RIGHT
-		# This keeps the weapon centered in front of the body
+		# When weapon is equipped and aiming, hands should shift left/right based on head direction
+		# Calculate horizontal offset based on camera rotation relative to body
 		if weapon_state == WeaponState.AIMING or weapon_state == WeaponState.READY:
-			base_offset.x = 0.0  # No left/right movement when aiming or ready
+			var camera_rotation_y = active_camera.global_rotation.y
+			var rotation_diff = camera_rotation_y - body_rotation_y
+
+			# Normalize rotation difference to [-PI, PI]
+			rotation_diff = fmod(rotation_diff + PI, TAU) - PI
+
+			# Convert rotation difference to horizontal hand offset
+			# Multiply by distance from body to get more shift when looking further away
+			var horizontal_shift = sin(rotation_diff) * abs(base_offset.z) * 0.3  # 30% of forward distance
+			base_offset.x = horizontal_shift
 
 		# Use chest bone as anchor point for body-relative positioning
 		var anchor_transform: Transform3D

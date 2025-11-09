@@ -327,7 +327,6 @@ func _drop_from_ragdoll():
 
 	# Mark as unequipped
 	is_equipped = false
-	var old_holder = holder
 	holder = null
 
 	print("Weapon ", weapon_name, " dropped from ragdoll at ", global_position)
