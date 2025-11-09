@@ -16,6 +16,7 @@ walk_speed = 5.0
 sprint_speed = 8.0
 jump_velocity = 4.5
 mouse_sensitivity = 0.003
+skeleton = NodePath("Model/Skeleton3D")
 fps_camera = NodePath("FPSCamera")
 tps_camera = NodePath("TPSCamera")
 camera_mode = 0
@@ -43,6 +44,7 @@ current = true
 fov = 90.0
 near = 0.01
 script = ExtResource("3")
+skeleton = NodePath("../Model/Skeleton3D")
 head_bone_name = "characters3d.com___Head"
 head_offset = Vector3(0, 0.1, 0.15)
 
