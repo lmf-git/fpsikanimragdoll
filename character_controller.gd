@@ -46,6 +46,9 @@ class_name CharacterController
 var equipped_weapon: Weapon = null
 var nearby_weapon: Weapon = null
 var last_nearby_weapon: Weapon = null  # Track changes for debug logging
+var is_aiming: bool = false  # Track weapon aim state
+@export var aim_weapon_offset: Vector3 = Vector3(0.3, -0.2, -0.4)  # Offset when aiming in FPS
+@export var aim_speed: float = 10.0  # Speed of aim transition
 
 # Ragdoll bone configuration - bones that will have physics
 const RAGDOLL_BONES = [
@@ -93,24 +96,11 @@ func _ready():
 	if not skeleton:
 		skeleton = find_skeleton(self)
 
-	print("Skeleton found: ", skeleton)
-
 	if skeleton:
-		print("Skeleton bone count: ", skeleton.get_bone_count())
-		print("Looking for head bone: ", head_bone_name)
-		print("Looking for neck bone: ", neck_bone_name)
-		print("Looking for right hand bone: ", right_hand_bone_name)
-		print("Looking for left hand bone: ", left_hand_bone_name)
-
 		head_bone_id = skeleton.find_bone(head_bone_name)
 		neck_bone_id = skeleton.find_bone(neck_bone_name)
 		right_hand_bone_id = skeleton.find_bone(right_hand_bone_name)
 		left_hand_bone_id = skeleton.find_bone(left_hand_bone_name)
-
-		print("Head bone ID: ", head_bone_id)
-		print("Neck bone ID: ", neck_bone_id)
-		print("Right hand bone ID: ", right_hand_bone_id)
-		print("Left hand bone ID: ", left_hand_bone_id)
 
 		if head_bone_id >= 0:
 			original_head_pose = skeleton.get_bone_pose(head_bone_id)
@@ -119,13 +109,6 @@ func _ready():
 
 		# Find mesh instance for visibility control
 		mesh_instance = find_mesh_instance(skeleton)
-		print("Mesh instance: ", mesh_instance)
-
-		# Debug: List all bones
-		print("\n=== All Skeleton Bones ===")
-		for i in range(skeleton.get_bone_count()):
-			print("  [", i, "] ", skeleton.get_bone_name(i))
-		print("=== End Bone List ===\n")
 
 	# Find cameras if not set (they should be children of this node)
 	if not fps_camera:
@@ -133,22 +116,9 @@ func _ready():
 	if not tps_camera:
 		tps_camera = get_node_or_null("TPSCamera")
 
-	print("FPS Camera: ", fps_camera)
-	print("TPS Camera: ", tps_camera)
-	print("Initial camera mode: ", camera_mode)
-
 	# Create IK system at runtime
 	if skeleton:
 		_create_ik_system()
-
-	# Print IK setup
-	print("\n=== IK Setup ===")
-	print("IK enabled: ", ik_enabled)
-	print("Left hand IK: ", left_hand_ik)
-	print("Right hand IK: ", right_hand_ik)
-	print("Left foot IK: ", left_foot_ik)
-	print("Right foot IK: ", right_foot_ik)
-	print("=== End IK Setup ===\n")
 
 	# Auto-create ragdoll if enabled
 	if auto_create_ragdoll and skeleton:
@@ -247,15 +217,17 @@ func _create_ik_system():
 func _create_ragdoll_bones():
 	print("\n=== Creating Ragdoll Bones at Runtime ===")
 
-	# Check if bones already exist
-	var existing_bones = 0
+	# Delete any existing physical bones to ensure we use latest settings
+	var existing_bones = []
 	for child in skeleton.get_children():
 		if child is PhysicalBone3D:
-			existing_bones += 1
+			existing_bones.append(child)
 
-	if existing_bones > 0:
-		print("Physical bones already exist (", existing_bones, "), skipping creation")
-		return
+	if existing_bones.size() > 0:
+		print("Deleting ", existing_bones.size(), " existing physical bones to recreate with new settings...")
+		for bone in existing_bones:
+			skeleton.remove_child(bone)
+			bone.queue_free()
 
 	var bones_created = 0
 
@@ -298,10 +270,13 @@ func _create_ragdoll_bones():
 		var radius = 0.05
 		var height = bone_length
 
-		# Larger shapes for major bones
+		# Larger shapes for major bones - keep tight to prevent excess movement
 		if bone_suffix in ["Hips", "Spine", "Chest", "Upper_Chest"]:
-			radius = 0.18
-			height = 0.35
+			radius = 0.08  # Much smaller radius for tighter control
+			height = 0.15  # Shorter segments for less leverage
+		elif "Shoulder" in bone_suffix:
+			radius = 0.05  # Very small for shoulders - they're locked anyway
+			height = 0.08
 		elif bone_suffix in ["Head"]:
 			radius = 0.15
 			height = 0.25
@@ -350,9 +325,9 @@ func _create_ragdoll_bones():
 			debug_mesh.owner = physical_bone
 
 		# CRITICAL: Configure joint to connect to parent bone
-		# Use HINGE for knees/elbows, CONE for everything else
+		# Use HINGE for knees/elbows/ankles/wrists - single axis rotation only
 		# Don't use NONE - it disconnects bones completely!
-		var use_hinge = bone_suffix in ["Lower_Leg", "L_Lower_Leg", "R_Lower_Leg", "Lower_Arm", "L_Lower_Arm", "R_Lower_Arm"]
+		var use_hinge = bone_suffix in ["Lower_Leg", "L_Lower_Leg", "R_Lower_Leg", "Lower_Arm", "L_Lower_Arm", "R_Lower_Arm", "Foot", "L_Foot", "R_Foot", "Hand", "L_Hand", "R_Hand"]
 
 		if use_hinge:
 			physical_bone.joint_type = PhysicalBone3D.JOINT_TYPE_HINGE
@@ -412,11 +387,11 @@ func _create_ragdoll_bones():
 			damping = 0.95
 			bias = 0.95
 		elif bone_suffix in ["Foot", "L_Foot", "R_Foot"]:
-			# Feet/ankles - extremely restricted
-			swing_limit = deg_to_rad(0.5)
-			twist_limit = deg_to_rad(0.2)
-			damping = 0.998
-			bias = 0.998
+			# HINGE: Feet/ankles - only bend up/down realistically
+			swing_limit = deg_to_rad(30)  # Can flex up and down
+			twist_limit = deg_to_rad(0)   # No twist on hinge
+			damping = 0.95
+			bias = 0.95
 		elif bone_suffix in ["Toes", "L_Toes", "R_Toes"]:
 			# Toes - almost locked
 			swing_limit = deg_to_rad(1)
@@ -436,11 +411,11 @@ func _create_ragdoll_bones():
 			damping = 0.95
 			bias = 0.95
 		elif bone_suffix in ["Hand", "L_Hand", "R_Hand"]:
-			# Hands/wrists - extremely restricted
-			swing_limit = deg_to_rad(0.5)
-			twist_limit = deg_to_rad(0.2)
-			damping = 0.998
-			bias = 0.998
+			# HINGE: Hands/wrists - only bend up/down realistically
+			swing_limit = deg_to_rad(70)  # Can flex at wrist
+			twist_limit = deg_to_rad(0)   # No twist on hinge
+			damping = 0.95
+			bias = 0.95
 		elif "Finger" in bone_suffix or "Thumb" in bone_suffix or "Index" in bone_suffix or "Middle" in bone_suffix or "Ring" in bone_suffix or "Little" in bone_suffix:
 			# Fingers - almost locked
 			swing_limit = deg_to_rad(2)
@@ -460,9 +435,9 @@ func _create_ragdoll_bones():
 			physical_bone.set("joint_constraints/twist_span", twist_limit)
 
 		# EXTREMELY stiff joints - nearly rigid skeleton
-		# For torso bones, apply maximum constraint enforcement
-		if bone_suffix in ["Hips", "Spine", "Chest", "Upper_Chest", "Neck", "Head", "Shoulder", "L_Shoulder", "R_Shoulder"]:
-			# Maximum constraint enforcement for torso - absolutely no give
+		# For torso and upper body bones, apply maximum constraint enforcement
+		if bone_suffix in ["Hips", "Spine", "Chest", "Upper_Chest", "Neck", "Head", "Shoulder", "L_Shoulder", "R_Shoulder", "Upper_Arm", "L_Upper_Arm", "R_Upper_Arm"]:
+			# Maximum constraint enforcement - absolutely no give
 			physical_bone.set("joint_constraints/bias", 1.0)
 			physical_bone.set("joint_constraints/damping", 1.0)
 			physical_bone.set("joint_constraints/softness", 0.0)
@@ -482,7 +457,7 @@ func _create_ragdoll_bones():
 		physical_bone.bounce = 0.0
 
 		# Apply extreme damping for upper body to prevent any rotation
-		if bone_suffix in ["Hips", "Spine", "Chest", "Upper_Chest", "Neck", "Head", "Shoulder", "L_Shoulder", "R_Shoulder"]:
+		if bone_suffix in ["Hips", "Spine", "Chest", "Upper_Chest", "Neck", "Head", "Shoulder", "L_Shoulder", "R_Shoulder", "Upper_Arm", "L_Upper_Arm", "R_Upper_Arm"]:
 			physical_bone.linear_damp = 1.0  # Maximum resistance to movement
 			physical_bone.angular_damp = 1.0  # Maximum resistance to rotation
 		else:
@@ -498,7 +473,7 @@ func _create_ragdoll_bones():
 		physical_bone.owner = get_tree().edited_scene_root if Engine.is_editor_hint() else self
 
 		bones_created += 1
-		print("  Created: ", physical_bone.name, " (radius: ", radius, ", height: ", height, ")")
+		# Removed verbose logging for each bone
 
 	# Set up collision exceptions between all physical bones (prevent self-collision)
 	var all_physical_bones = []
@@ -506,13 +481,11 @@ func _create_ragdoll_bones():
 		if child is PhysicalBone3D:
 			all_physical_bones.append(child)
 
-	print("Setting up collision exceptions between ", all_physical_bones.size(), " bones...")
 	for i in range(all_physical_bones.size()):
 		for j in range(i + 1, all_physical_bones.size()):
 			all_physical_bones[i].add_collision_exception_with(all_physical_bones[j])
 
-	print("Created ", bones_created, " physical bones")
-	print("=== Ragdoll Creation Complete ===\n")
+	print("Created ", bones_created, " ragdoll bones")
 
 func _input(event):
 	if event is InputEventMouseMotion and Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED:
@@ -550,6 +523,14 @@ func _input(event):
 			drop_weapon()
 		elif nearby_weapon:
 			pickup_weapon(nearby_weapon)
+
+	# Right click for weapon aim
+	if event is InputEventMouseButton:
+		if event.button_index == MOUSE_BUTTON_RIGHT:
+			if event.pressed and equipped_weapon:
+				is_aiming = true
+			else:
+				is_aiming = false
 
 	if event.is_action_pressed("ui_cancel"):
 		if Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED:
@@ -722,6 +703,13 @@ func toggle_ragdoll():
 		if mesh_instance:
 			mesh_instance.layers = 1
 			print("Mesh made visible for ragdoll")
+
+		# Attach weapon to physical hand bone if equipped
+		if equipped_weapon:
+			_attach_weapon_to_ragdoll_hand()
+
+		# Attach FPS camera to physical head bone
+		_attach_camera_to_ragdoll_head()
 	else:
 		print("DISABLING RAGDOLL - Stopping physics simulation")
 		skeleton.physical_bones_stop_simulation()
@@ -737,7 +725,161 @@ func toggle_ragdoll():
 				mesh_instance.layers = 1  # Visible
 			print("Mesh visibility restored based on camera mode")
 
+		# Restore weapon to normal attachment if equipped
+		if equipped_weapon:
+			_detach_weapon_from_ragdoll_hand()
+
+		# Restore FPS camera to character
+		_detach_camera_from_ragdoll_head()
+
 	print("Ragdoll enabled: ", ragdoll_enabled)
+
+func _attach_weapon_to_ragdoll_hand():
+	"""Attach weapon to physical hand bone during ragdoll"""
+	if not equipped_weapon or not skeleton:
+		return
+
+	# Find the physical bone for the right hand
+	var right_hand_bone_name = skeleton.get_bone_name(right_hand_bone_id)
+	var physical_hand_bone = null
+
+	for child in skeleton.get_children():
+		if child is PhysicalBone3D and child.bone_name == right_hand_bone_name:
+			physical_hand_bone = child
+			break
+
+	if not physical_hand_bone:
+		print("WARNING: Could not find physical bone for right hand")
+		return
+
+	print("Attaching weapon to ragdoll hand: ", physical_hand_bone.name)
+
+	# Remove weapon from character
+	if equipped_weapon.get_parent():
+		equipped_weapon.get_parent().remove_child(equipped_weapon)
+
+	# Add weapon as child of physical hand bone
+	physical_hand_bone.add_child(equipped_weapon)
+
+	# Position weapon relative to hand bone (using grip alignment)
+	if equipped_weapon.main_grip:
+		var grip_local_pos = equipped_weapon.main_grip.position
+		equipped_weapon.position = -grip_local_pos
+		equipped_weapon.rotation = Vector3.ZERO
+	else:
+		equipped_weapon.position = Vector3(0, -0.05, 0.1)
+		equipped_weapon.rotation = Vector3.ZERO
+
+	# Enable physics on weapon but don't let it fall
+	equipped_weapon.freeze = false
+	equipped_weapon.gravity_scale = 0.0  # No gravity while held
+	equipped_weapon.collision_layer = 4  # Weapon layer
+	equipped_weapon.collision_mask = 1 | 2  # Collide with world and ragdoll
+
+	# Connect to collision signal to release on impact
+	if not equipped_weapon.body_entered.is_connected(_on_ragdoll_weapon_collision):
+		equipped_weapon.body_entered.connect(_on_ragdoll_weapon_collision)
+
+	print("Weapon attached to ragdoll hand")
+
+func _detach_weapon_from_ragdoll_hand():
+	"""Restore weapon to normal attachment after ragdoll"""
+	if not equipped_weapon:
+		return
+
+	print("Detaching weapon from ragdoll hand")
+
+	# Disconnect collision signal
+	if equipped_weapon.body_entered.is_connected(_on_ragdoll_weapon_collision):
+		equipped_weapon.body_entered.disconnect(_on_ragdoll_weapon_collision)
+
+	# Remove from physical bone
+	if equipped_weapon.get_parent():
+		equipped_weapon.get_parent().remove_child(equipped_weapon)
+
+	# Re-add to character
+	add_child(equipped_weapon)
+
+	# Restore normal weapon state
+	equipped_weapon.freeze = true
+	equipped_weapon.gravity_scale = 0.0
+	equipped_weapon.collision_layer = 0
+	equipped_weapon.collision_mask = 0
+
+	print("Weapon restored to normal attachment")
+
+func _on_ragdoll_weapon_collision(body: Node):
+	"""Release weapon when it collides with something during ragdoll"""
+	if not ragdoll_enabled or not equipped_weapon:
+		return
+
+	# Ignore collisions with own ragdoll parts
+	if body is PhysicalBone3D and body.get_parent() == skeleton:
+		return
+
+	print("Weapon collision during ragdoll with: ", body.name, " - Releasing weapon")
+
+	# Disconnect signal
+	if equipped_weapon.body_entered.is_connected(_on_ragdoll_weapon_collision):
+		equipped_weapon.body_entered.disconnect(_on_ragdoll_weapon_collision)
+
+	# Drop the weapon
+	drop_weapon()
+
+func _attach_camera_to_ragdoll_head():
+	"""Attach FPS camera to physical head bone during ragdoll"""
+	if not fps_camera or not skeleton or head_bone_id < 0:
+		return
+
+	# Find the physical bone for the head
+	var head_bone_name = skeleton.get_bone_name(head_bone_id)
+	var physical_head_bone = null
+
+	for child in skeleton.get_children():
+		if child is PhysicalBone3D and child.bone_name == head_bone_name:
+			physical_head_bone = child
+			break
+
+	if not physical_head_bone:
+		print("WARNING: Could not find physical bone for head")
+		return
+
+	print("Attaching FPS camera to ragdoll head: ", physical_head_bone.name)
+
+	# Store original camera transform
+	var camera_local_transform = fps_camera.transform
+
+	# Remove camera from character
+	if fps_camera.get_parent():
+		fps_camera.get_parent().remove_child(fps_camera)
+
+	# Add camera as child of physical head bone
+	physical_head_bone.add_child(fps_camera)
+
+	# Restore camera's relative position (should be at eye level in head)
+	fps_camera.transform = Transform3D(Basis(), Vector3(0, 0.1, 0.15))  # Standard eye offset
+
+	print("FPS camera attached to ragdoll head")
+
+func _detach_camera_from_ragdoll_head():
+	"""Restore FPS camera to character after ragdoll"""
+	if not fps_camera:
+		return
+
+	print("Detaching FPS camera from ragdoll head")
+
+	# Remove from physical bone
+	if fps_camera.get_parent():
+		fps_camera.get_parent().remove_child(fps_camera)
+
+	# Re-add to character
+	add_child(fps_camera)
+
+	# Restore normal camera position
+	fps_camera.position = Vector3(0, 1.6, 0)
+	fps_camera.rotation = Vector3.ZERO
+
+	print("FPS camera restored to character")
 
 func _detect_nearby_weapon():
 	"""Detect weapons within pickup range"""
@@ -762,10 +904,7 @@ func _detect_nearby_weapon():
 
 	# Only log when nearby weapon changes
 	if nearby_weapon != last_nearby_weapon:
-		if nearby_weapon:
-			print(">> Nearby weapon detected: ", nearby_weapon.weapon_name, " - Press E to pick up")
-		elif last_nearby_weapon:
-			print(">> Left weapon pickup range")
+		# Removed spam - users can see weapon highlight instead
 		last_nearby_weapon = nearby_weapon
 
 
@@ -781,8 +920,6 @@ func pickup_weapon(weapon: Weapon):
 	if not weapon or weapon.is_equipped:
 		return
 
-	print("Picking up weapon: ", weapon.weapon_name)
-
 	# Equip the weapon
 	if weapon.equip(self):
 		equipped_weapon = weapon
@@ -795,8 +932,6 @@ func drop_weapon():
 	"""Drop the currently equipped weapon"""
 	if not equipped_weapon:
 		return
-
-	print("Dropping weapon: ", equipped_weapon.weapon_name)
 
 	# Restore IK targets to default positions
 	var ik_targets_node = get_node_or_null("IKTargets")
@@ -819,37 +954,61 @@ func _update_weapon_position():
 	if not equipped_weapon or not skeleton or right_hand_bone_id < 0:
 		return
 
-	# Get right hand bone global transform
-	var right_hand_transform = skeleton.global_transform * skeleton.get_bone_global_pose(right_hand_bone_id)
-
-	# Position weapon at right hand with offset
-	var weapon_offset = Vector3(0, 0, 0)  # Weapon grip offset from hand center
-	var weapon_rotation_offset = Vector3(deg_to_rad(-90), 0, 0)  # Rotate weapon to grip orientation
-
-	# Apply offsets based on weapon type
-	if equipped_weapon.weapon_type == Weapon.WeaponType.PISTOL:
-		weapon_offset = Vector3(0, -0.05, 0.1)
-	elif equipped_weapon.weapon_type == Weapon.WeaponType.RIFLE:
-		weapon_offset = Vector3(0, -0.05, 0.15)
-
-	# Set weapon position and rotation
-	equipped_weapon.global_position = right_hand_transform.origin + right_hand_transform.basis * weapon_offset
-
-	# Align weapon with hand rotation plus offset
-	var weapon_basis = right_hand_transform.basis
-	weapon_basis = weapon_basis.rotated(weapon_basis.x, weapon_rotation_offset.x)
-	weapon_basis = weapon_basis.rotated(weapon_basis.y, weapon_rotation_offset.y)
-	weapon_basis = weapon_basis.rotated(weapon_basis.z, weapon_rotation_offset.z)
-	equipped_weapon.global_transform.basis = weapon_basis
-
-	# Update IK targets - ONLY left hand for two-handed weapons
-	# Don't update right hand IK - it creates a feedback loop since weapon follows right hand
 	var ik_targets_node = get_node_or_null("IKTargets")
-	if ik_targets_node and equipped_weapon.is_two_handed and equipped_weapon.secondary_grip:
-		# Left hand IK target to secondary grip (for two-handed weapons only)
-		var left_hand_target = ik_targets_node.get_node_or_null("LeftHandTarget")
-		if left_hand_target:
-			left_hand_target.global_position = equipped_weapon.secondary_grip.global_position
+
+	if is_aiming:
+		# AIMING MODE: Position weapon at camera view, update both hands via IK
+		var active_camera = fps_camera if camera_mode == 0 else tps_camera
+		if active_camera:
+			# Position weapon in front of camera
+			var camera_transform = active_camera.global_transform
+			var aim_pos = camera_transform.origin + camera_transform.basis.z * aim_weapon_offset.z + camera_transform.basis.x * aim_weapon_offset.x + camera_transform.basis.y * aim_weapon_offset.y
+
+			# Align weapon to camera direction
+			equipped_weapon.global_transform.basis = camera_transform.basis
+			equipped_weapon.global_position = aim_pos
+
+			# Update both hand IK targets to weapon grips when aiming
+			if ik_targets_node:
+				# Right hand to main grip
+				if equipped_weapon.main_grip:
+					var right_hand_target = ik_targets_node.get_node_or_null("RightHandTarget")
+					if right_hand_target:
+						right_hand_target.global_position = equipped_weapon.main_grip.global_position
+
+				# Left hand to secondary grip (for two-handed) or support position
+				if equipped_weapon.is_two_handed and equipped_weapon.secondary_grip:
+					var left_hand_target = ik_targets_node.get_node_or_null("LeftHandTarget")
+					if left_hand_target:
+						left_hand_target.global_position = equipped_weapon.secondary_grip.global_position
+	else:
+		# NORMAL MODE: Weapon follows right hand bone
+		var right_hand_transform = skeleton.global_transform * skeleton.get_bone_global_pose(right_hand_bone_id)
+
+		# Position weapon so its main_grip aligns with the hand bone
+		if equipped_weapon.main_grip:
+			# Calculate offset from weapon origin to main grip in weapon's local space
+			var grip_local_pos = equipped_weapon.main_grip.position
+
+			# First set rotation to align with hand
+			equipped_weapon.global_transform.basis = right_hand_transform.basis
+
+			# Then position weapon so grip aligns with hand
+			# Weapon position = Hand position - (grip offset in world space)
+			var grip_world_offset = equipped_weapon.global_transform.basis * grip_local_pos
+			equipped_weapon.global_position = right_hand_transform.origin - grip_world_offset
+		else:
+			# Fallback: if no grip point defined, use simple offset
+			var weapon_offset = Vector3(0, -0.05, 0.1)
+			equipped_weapon.global_position = right_hand_transform.origin + right_hand_transform.basis * weapon_offset
+			equipped_weapon.global_transform.basis = right_hand_transform.basis
+
+		# Update IK targets - ONLY left hand for two-handed weapons when not aiming
+		if ik_targets_node and equipped_weapon.is_two_handed and equipped_weapon.secondary_grip:
+			# Left hand IK target to secondary grip (for two-handed weapons only)
+			var left_hand_target = ik_targets_node.get_node_or_null("LeftHandTarget")
+			if left_hand_target:
+				left_hand_target.global_position = equipped_weapon.secondary_grip.global_position
 
 func _process(_delta):
 	# Update weapon position to follow hand
