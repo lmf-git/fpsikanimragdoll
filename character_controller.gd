@@ -157,9 +157,11 @@ func _ready():
 			right_hand_attachment = BoneAttachment3D.new()
 			right_hand_attachment.name = "RightHandAttachment"
 			right_hand_attachment.bone_name = right_hand_bone_name
+			right_hand_attachment.bone_idx = right_hand_bone_id  # Set bone index for better tracking
 			skeleton.add_child(right_hand_attachment)
 			right_hand_attachment.owner = self
-			print("Created BoneAttachment3D for right hand: ", right_hand_bone_name)
+			print("Created BoneAttachment3D for right hand: ", right_hand_bone_name, " (bone_idx: ", right_hand_bone_id, ")")
+			print("  Skeleton: ", skeleton.name, ", Bone global pose: ", skeleton.get_bone_global_pose(right_hand_bone_id).origin)
 
 	# Find collision shape for stance adjustments
 	for child in get_children():
@@ -1177,6 +1179,16 @@ func pickup_weapon(weapon: Weapon):
 	if weapon.equip(self, right_hand_attachment):
 		equipped_weapon = weapon
 		nearby_weapon = null
+
+		# Debug: Verify weapon attachment
+		print("DEBUG: Weapon equipped!")
+		print("  BoneAttachment position: ", right_hand_attachment.global_position if right_hand_attachment else "NULL")
+		print("  Weapon parent: ", equipped_weapon.get_parent().name if equipped_weapon.get_parent() else "NULL")
+		print("  Weapon global position: ", equipped_weapon.global_position)
+		print("  Weapon local position: ", equipped_weapon.position)
+		if skeleton and right_hand_bone_id >= 0:
+			var hand_bone_global = skeleton.global_transform * skeleton.get_bone_global_pose(right_hand_bone_id)
+			print("  Hand bone global position: ", hand_bone_global.origin)
 
 		# Weapon is now parented to hand bone and will automatically follow IK transforms
 
