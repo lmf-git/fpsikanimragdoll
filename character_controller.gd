@@ -34,6 +34,16 @@ class_name CharacterController
 
 # Ragdoll
 @export var ragdoll_enabled: bool = false
+@export var auto_create_ragdoll: bool = true  # Automatically create physical bones at runtime
+
+# Ragdoll bone configuration - bones that will have physics
+const RAGDOLL_BONES = [
+	"Hips", "Spine", "Chest", "Upper_Chest", "Neck", "Head",
+	"L_Shoulder", "L_Upper_Arm", "L_Lower_Arm", "L_Hand",
+	"R_Shoulder", "R_Upper_Arm", "R_Lower_Arm", "R_Hand",
+	"L_Upper_Leg", "L_Lower_Leg", "L_Foot",
+	"R_Upper_Leg", "R_Lower_Leg", "R_Foot"
+]
 
 # Internal variables
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
@@ -86,6 +96,10 @@ func _ready():
 	print("TPS Camera: ", tps_camera)
 	print("Initial camera mode: ", camera_mode)
 
+	# Auto-create ragdoll if enabled
+	if auto_create_ragdoll and skeleton:
+		_create_ragdoll_bones()
+
 	# Set initial camera
 	_switch_camera(camera_mode)
 	print("=== End Character Controller Ready ===\n")
@@ -107,6 +121,70 @@ func find_mesh_instance(node: Node) -> MeshInstance3D:
 		if result:
 			return result
 	return null
+
+func _create_ragdoll_bones():
+	print("\n=== Creating Ragdoll Bones at Runtime ===")
+
+	# Check if bones already exist
+	var existing_bones = 0
+	for child in skeleton.get_children():
+		if child is PhysicalBone3D:
+			existing_bones += 1
+
+	if existing_bones > 0:
+		print("Physical bones already exist (", existing_bones, "), skipping creation")
+		return
+
+	var bones_created = 0
+
+	# Create physical bones for ragdoll
+	for bone_suffix in RAGDOLL_BONES:
+		# Find the bone ID - try different naming conventions
+		var bone_id = -1
+		var bone_name = ""
+
+		# Try different prefixes common in character models
+		var prefixes = ["characters3d.com___", "", "mixamorig:", "Armature_"]
+		for prefix in prefixes:
+			var test_name = prefix + bone_suffix
+			bone_id = skeleton.find_bone(test_name)
+			if bone_id >= 0:
+				bone_name = test_name
+				break
+
+		if bone_id < 0:
+			print("  WARNING: Could not find bone: ", bone_suffix)
+			continue
+
+		# Create physical bone
+		var physical_bone = PhysicalBone3D.new()
+		physical_bone.name = "PhysicalBone_" + bone_suffix
+		physical_bone.bone_name = bone_name
+
+		# Create a simple capsule collision shape
+		var shape = CapsuleShape3D.new()
+		shape.radius = 0.05
+		shape.height = 0.2
+
+		# Add collision shape
+		var collision_shape = CollisionShape3D.new()
+		collision_shape.shape = shape
+		physical_bone.add_child(collision_shape)
+		collision_shape.owner = physical_bone
+
+		# Physics properties
+		physical_bone.mass = 1.0
+		physical_bone.friction = 0.5
+		physical_bone.bounce = 0.0
+
+		# Add to skeleton
+		skeleton.add_child(physical_bone)
+		physical_bone.owner = get_tree().edited_scene_root if Engine.is_editor_hint() else self
+
+		bones_created += 1
+
+	print("Created ", bones_created, " physical bones")
+	print("=== Ragdoll Creation Complete ===\n")
 
 func _input(event):
 	if event is InputEventMouseMotion and Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED:
