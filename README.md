@@ -16,10 +16,18 @@ A complete character controller system for Godot 4.5 featuring:
 - Toggle between cameras with `V` or `I` keys
 - Force TPS mode with `O` key
 
-### 2. Head Aiming System
-- Head bone rotates based on camera pitch for realistic aiming
-- Configurable rotation limits (±60° pitch, ±70° yaw by default)
-- Smooth interpolation for natural movement
+### 2. Head Aiming & Free Look System
+- **Head Tracking**: Head and neck bones rotate with camera for realistic aiming
+  - Pitch (up/down): ±60° range
+  - Yaw (left/right): ±70° range before body turns
+  - Both neck and head bones animated (neck 40% yaw / 30% pitch, head 60% yaw / 70% pitch)
+- **Free Look**: Look around without turning your body
+  - Head turns independently up to 45° before body follows
+  - Body rotation smoothly catches up when threshold exceeded
+  - When moving, body follows camera direction
+  - When standing, body only turns if head turned too far
+- Smooth interpolation for natural, realistic movement
+- No camera shaking - physics-synced updates
 
 ### 3. IK System
 - Ready-to-use IK targets for:
@@ -150,12 +158,14 @@ Edit `character_controller.gd` exports:
 - `follow_height`: Height above character (1.5)
 - `camera_smoothness`: Camera movement smoothness (10.0)
 
-### Head Look Settings
+### Head Look & Free Look Settings
 
 In `character_controller.gd`:
-- `max_head_rotation_x`: Max pitch rotation (60°)
-- `max_head_rotation_y`: Max yaw rotation (70°)
-- `head_rotation_speed`: Rotation interpolation speed (5.0)
+- `max_head_rotation_x`: Max pitch rotation in degrees (60°)
+- `max_head_rotation_y`: Max yaw rotation before body turns (70°)
+- `head_rotation_speed`: Head/neck rotation speed (10.0)
+- `body_rotation_speed`: How fast body catches up to camera (8.0)
+- `free_look_threshold`: Degrees of head turn before body follows (45°)
 
 ## Technical Details
 
@@ -164,12 +174,19 @@ In `character_controller.gd`:
 - Follows head bone global transform
 - Uses bone global pose for accurate positioning
 - Independent rotation control for aiming
+- Uses _physics_process for sync with character physics (no shaking)
+- Visibility layer system prevents seeing own body
 
-### Head Aiming
-- Modifies head bone pose in real-time
-- Uses quaternion interpolation for smooth rotation
-- Clamped to prevent unnatural head positions
+### Head Aiming & Free Look
+- **Dual bone system**: Both neck and head bones animated
+  - Neck: 40% yaw, 30% pitch contribution
+  - Head: 60% yaw, 70% pitch contribution
+- Head rotation calculated relative to body rotation
+- Uses quaternion slerp for smooth interpolation
+- Clamped to prevent unnatural positions
 - Works in both FPS and TPS modes
+- Body rotation decoupled from camera - lerps to follow smoothly
+- Free look threshold prevents instant body turning
 
 ### TPS Camera
 - Raycasts to prevent wall clipping
