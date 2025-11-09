@@ -284,37 +284,37 @@ func _create_ragdoll_bones():
 		var damping = 0.95  # Very high damping = very stiff
 		var bias = 0.95     # Very high bias = rigid response
 
-		# Ultra-specific constraints - EXTREMELY tight, near-rigid!
+		# Ultra-specific constraints - COMPLETELY RIGID UPPER BODY!
 		if bone_suffix in ["Hips"]:
-			# Hips/pelvis - COMPLETELY LOCKED (no rotation at all)
-			swing_limit = deg_to_rad(0.01)
-			twist_limit = deg_to_rad(0.01)
-			damping = 0.99999
-			bias = 0.99999
+			# Hips/pelvis - ZERO MOVEMENT (completely locked)
+			swing_limit = 0.0
+			twist_limit = 0.0
+			damping = 1.0
+			bias = 1.0
 		elif bone_suffix in ["Spine", "Chest", "Upper_Chest"]:
-			# Spine/torso - COMPLETELY LOCKED (no rotation at all)
-			swing_limit = deg_to_rad(0.01)
-			twist_limit = deg_to_rad(0.01)
-			damping = 0.99999
-			bias = 0.99999
+			# Spine/torso - ZERO MOVEMENT (completely locked)
+			swing_limit = 0.0
+			twist_limit = 0.0
+			damping = 1.0
+			bias = 1.0
 		elif bone_suffix in ["Neck"]:
-			# Neck - COMPLETELY LOCKED (no rotation at all)
-			swing_limit = deg_to_rad(0.01)
-			twist_limit = deg_to_rad(0.01)
-			damping = 0.99999
-			bias = 0.99999
+			# Neck - ZERO MOVEMENT (completely locked)
+			swing_limit = 0.0
+			twist_limit = 0.0
+			damping = 1.0
+			bias = 1.0
 		elif bone_suffix in ["Head"]:
-			# Head - COMPLETELY LOCKED (no rotation at all)
-			swing_limit = deg_to_rad(0.01)
-			twist_limit = deg_to_rad(0.01)
-			damping = 0.99999
-			bias = 0.99999
+			# Head - ZERO MOVEMENT (completely locked)
+			swing_limit = 0.0
+			twist_limit = 0.0
+			damping = 1.0
+			bias = 1.0
 		elif "Shoulder" in bone_suffix:
-			# Shoulders - COMPLETELY LOCKED (no rotation at all)
-			swing_limit = deg_to_rad(0.01)
-			twist_limit = deg_to_rad(0.01)
-			damping = 0.99999
-			bias = 0.99999
+			# Shoulders - ZERO MOVEMENT (completely locked)
+			swing_limit = 0.0
+			twist_limit = 0.0
+			damping = 1.0
+			bias = 1.0
 		elif bone_suffix in ["Upper_Leg", "L_Upper_Leg", "R_Upper_Leg"]:
 			# Upper legs - very restricted hip
 			swing_limit = deg_to_rad(3)
@@ -379,15 +379,21 @@ func _create_ragdoll_bones():
 		# EXTREMELY stiff joints - nearly rigid skeleton
 		physical_bone.set("joint_constraints/bias", bias)
 		physical_bone.set("joint_constraints/damping", damping)
-		physical_bone.set("joint_constraints/softness", 0.001)  # Extremely rigid, not springy
-		physical_bone.set("joint_constraints/relaxation", 0.999)  # Very high stability
+		physical_bone.set("joint_constraints/softness", 0.0)  # Completely rigid, zero springiness
+		physical_bone.set("joint_constraints/relaxation", 1.0)  # Maximum stability
 
 		# Physics properties - add damping to resist all motion
 		physical_bone.mass = 1.0
 		physical_bone.friction = 1.0  # Maximum friction
 		physical_bone.bounce = 0.0
-		physical_bone.linear_damp = 0.8  # Strong resistance to linear movement
-		physical_bone.angular_damp = 0.99  # Extremely heavy resistance to rotation
+
+		# Apply extreme damping for upper body to prevent any rotation
+		if bone_suffix in ["Hips", "Spine", "Chest", "Upper_Chest", "Neck", "Head", "Shoulder", "L_Shoulder", "R_Shoulder"]:
+			physical_bone.linear_damp = 1.0  # Maximum resistance to movement
+			physical_bone.angular_damp = 1.0  # Maximum resistance to rotation
+		else:
+			physical_bone.linear_damp = 0.8  # Strong resistance to linear movement
+			physical_bone.angular_damp = 0.99  # Extremely heavy resistance to rotation
 
 		# CRITICAL: Set collision layers and masks for proper physics
 		physical_bone.collision_layer = 2  # Layer 2 for ragdoll parts
