@@ -247,84 +247,119 @@ func _create_ragdoll_bones():
 			debug_mesh.owner = physical_bone
 
 		# CRITICAL: Configure joint to connect to parent bone
-		physical_bone.joint_type = PhysicalBone3D.JOINT_TYPE_CONE
+		# Use HINGE joints for knees and elbows, CONE for everything else
+		var use_hinge = bone_suffix in ["Lower_Leg", "L_Lower_Leg", "R_Lower_Leg", "Lower_Arm", "L_Lower_Arm", "R_Lower_Arm"]
+
+		if use_hinge:
+			physical_bone.joint_type = PhysicalBone3D.JOINT_TYPE_HINGE
+		else:
+			physical_bone.joint_type = PhysicalBone3D.JOINT_TYPE_CONE
+
 		physical_bone.joint_offset = Transform3D()  # No offset from bone
 
-		# Joint limits - MUCH tighter constraints for realistic skeleton movement
-		var swing_limit = deg_to_rad(20)  # Default very restricted
-		var twist_limit = deg_to_rad(10)
-		var damping = 0.5  # Joint damping/stiffness
+		# Joint limits - EXTREMELY tight constraints, near-rigid skeleton
+		var swing_limit = deg_to_rad(5)   # Default almost rigid
+		var twist_limit = deg_to_rad(2)   # Almost no twist
+		var damping = 0.95  # Very high damping = very stiff
+		var bias = 0.95     # Very high bias = rigid response
 
-		# Very specific constraints for each bone type
+		# Ultra-specific constraints - very tight!
 		if bone_suffix in ["Hips"]:
-			# Hips - almost no rotation (root of skeleton)
-			swing_limit = deg_to_rad(5)
-			twist_limit = deg_to_rad(5)
-			damping = 0.9
+			# Hips - nearly locked (root)
+			swing_limit = deg_to_rad(2)
+			twist_limit = deg_to_rad(1)
+			damping = 0.99
+			bias = 0.99
 		elif bone_suffix in ["Spine", "Chest", "Upper_Chest"]:
-			# Spine/torso - very limited, slight bend/twist only
-			swing_limit = deg_to_rad(10)
-			twist_limit = deg_to_rad(8)
-			damping = 0.8
+			# Spine/torso - minimal flex
+			swing_limit = deg_to_rad(3)
+			twist_limit = deg_to_rad(2)
+			damping = 0.98
+			bias = 0.98
 		elif bone_suffix in ["Neck"]:
-			# Neck - limited rotation
-			swing_limit = deg_to_rad(20)
-			twist_limit = deg_to_rad(15)
-			damping = 0.7
+			# Neck - controlled rotation
+			swing_limit = deg_to_rad(10)
+			twist_limit = deg_to_rad(5)
+			damping = 0.92
+			bias = 0.92
 		elif bone_suffix in ["Head"]:
-			# Head - very limited rotation (neck does most of the work)
-			swing_limit = deg_to_rad(15)
-			twist_limit = deg_to_rad(10)
-			damping = 0.7
+			# Head - minimal rotation
+			swing_limit = deg_to_rad(8)
+			twist_limit = deg_to_rad(4)
+			damping = 0.92
+			bias = 0.92
 		elif "Shoulder" in bone_suffix:
-			# Shoulders - very limited (just connection point)
+			# Shoulders - almost locked
+			swing_limit = deg_to_rad(5)
+			twist_limit = deg_to_rad(2)
+			damping = 0.95
+			bias = 0.95
+		elif bone_suffix in ["Upper_Leg", "L_Upper_Leg", "R_Upper_Leg"]:
+			# Upper legs - restricted hip
+			swing_limit = deg_to_rad(15)
+			twist_limit = deg_to_rad(3)
+			damping = 0.90
+			bias = 0.90
+		elif bone_suffix in ["Lower_Leg", "L_Lower_Leg", "R_Lower_Leg"]:
+			# HINGE: Lower legs (knees) - one direction only
+			# For hinge joints, only swing matters
+			swing_limit = deg_to_rad(120)  # Can bend backward
+			twist_limit = deg_to_rad(0)    # No twist on hinge
+			damping = 0.88
+			bias = 0.88
+		elif bone_suffix in ["Foot", "L_Foot", "R_Foot"]:
+			# Feet - ankle, limited
+			swing_limit = deg_to_rad(12)
+			twist_limit = deg_to_rad(3)
+			damping = 0.90
+			bias = 0.90
+		elif bone_suffix in ["Toes", "L_Toes", "R_Toes"]:
+			# Toes - very limited
+			swing_limit = deg_to_rad(20)
+			twist_limit = deg_to_rad(1)
+			damping = 0.92
+			bias = 0.92
+		elif bone_suffix in ["Upper_Arm", "L_Upper_Arm", "R_Upper_Arm"]:
+			# Upper arms - moderate shoulder movement
+			swing_limit = deg_to_rad(25)
+			twist_limit = deg_to_rad(10)
+			damping = 0.88
+			bias = 0.88
+		elif bone_suffix in ["Lower_Arm", "L_Lower_Arm", "R_Lower_Arm"]:
+			# HINGE: Lower arms (elbows) - one direction only
+			swing_limit = deg_to_rad(140)  # Can bend
+			twist_limit = deg_to_rad(0)    # No twist on hinge
+			damping = 0.88
+			bias = 0.88
+		elif bone_suffix in ["Hand", "L_Hand", "R_Hand"]:
+			# Hands/wrists - restricted
 			swing_limit = deg_to_rad(15)
 			twist_limit = deg_to_rad(5)
-			damping = 0.8
-		elif bone_suffix in ["Upper_Leg", "L_Upper_Leg", "R_Upper_Leg"]:
-			# Upper legs (hips) - realistic hip joint
-			swing_limit = deg_to_rad(30)
-			twist_limit = deg_to_rad(10)
-			damping = 0.6
-		elif bone_suffix in ["Lower_Leg", "L_Lower_Leg", "R_Lower_Leg"]:
-			# Lower legs (knees) - hinge joint, bend forward only
-			swing_limit = deg_to_rad(90)  # Can bend
-			twist_limit = deg_to_rad(3)   # Almost no twist
-			damping = 0.5
-		elif bone_suffix in ["Foot", "L_Foot", "R_Foot", "Toes", "L_Toes", "R_Toes"]:
-			# Feet/toes - ankle joint, limited
-			swing_limit = deg_to_rad(25)
-			twist_limit = deg_to_rad(5)
-			damping = 0.6
-		elif bone_suffix in ["Upper_Arm", "L_Upper_Arm", "R_Upper_Arm"]:
-			# Upper arms - shoulder joint, reasonable range
-			swing_limit = deg_to_rad(45)
-			twist_limit = deg_to_rad(30)
-			damping = 0.5
-		elif bone_suffix in ["Lower_Arm", "L_Lower_Arm", "R_Lower_Arm"]:
-			# Lower arms (elbows) - hinge joint
-			swing_limit = deg_to_rad(90)  # Can bend
-			twist_limit = deg_to_rad(5)   # Almost no twist
-			damping = 0.5
-		elif bone_suffix in ["Hand", "L_Hand", "R_Hand"]:
-			# Hands/wrists - limited
-			swing_limit = deg_to_rad(30)
-			twist_limit = deg_to_rad(15)
-			damping = 0.6
+			damping = 0.90
+			bias = 0.90
 		elif "Finger" in bone_suffix or "Thumb" in bone_suffix or "Index" in bone_suffix or "Middle" in bone_suffix or "Ring" in bone_suffix or "Little" in bone_suffix:
-			# Fingers - small range, finger joints
-			swing_limit = deg_to_rad(45)
-			twist_limit = deg_to_rad(3)
-			damping = 0.7
+			# Fingers - small, controlled
+			swing_limit = deg_to_rad(30)
+			twist_limit = deg_to_rad(1)
+			damping = 0.93
+			bias = 0.93
 
-		physical_bone.set("joint_constraints/swing_span", swing_limit)
-		physical_bone.set("joint_constraints/twist_span", twist_limit)
+		# Apply limits based on joint type
+		if use_hinge:
+			# Hinge joints use different constraint properties
+			physical_bone.set("joint_constraints/angular_limit_lower", -swing_limit)
+			physical_bone.set("joint_constraints/angular_limit_upper", 0)  # Only bend one way
+			physical_bone.set("joint_constraints/angular_limit_enabled", true)
+		else:
+			# Cone joints
+			physical_bone.set("joint_constraints/swing_span", swing_limit)
+			physical_bone.set("joint_constraints/twist_span", twist_limit)
 
-		# Much stiffer joints with higher bias and damping
-		physical_bone.set("joint_constraints/bias", 0.6)
+		# EXTREMELY stiff joints - nearly rigid skeleton
+		physical_bone.set("joint_constraints/bias", bias)
 		physical_bone.set("joint_constraints/damping", damping)
-		physical_bone.set("joint_constraints/softness", 0.5)
-		physical_bone.set("joint_constraints/relaxation", 0.8)
+		physical_bone.set("joint_constraints/softness", 0.05)  # Very rigid, not springy
+		physical_bone.set("joint_constraints/relaxation", 0.95)  # High stability
 
 		# Physics properties
 		physical_bone.mass = 1.0
