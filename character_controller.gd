@@ -4,8 +4,28 @@ class_name CharacterController
 # Movement
 @export var walk_speed: float = 5.0
 @export var sprint_speed: float = 8.0
+@export var crouch_speed: float = 2.5
+@export var prone_speed: float = 1.5
 @export var jump_velocity: float = 4.5
 @export var mouse_sensitivity: float = 0.003
+
+# Stance system
+enum Stance { STANDING, CROUCHING, PRONE }
+var current_stance: Stance = Stance.STANDING
+var target_stance: Stance = Stance.STANDING
+@export var stance_transition_speed: float = 8.0
+
+# Capsule dimensions for different stances
+@export var standing_height: float = 1.8
+@export var crouching_height: float = 1.0
+@export var prone_height: float = 0.5
+var capsule_shape: CapsuleShape3D
+var collision_shape: CollisionShape3D
+
+# Jump state
+var is_jumping: bool = false
+var jump_time: float = 0.0
+@export var max_jump_time: float = 0.3  # Time to blend IK during jump
 
 # Camera
 @export var fps_camera: Camera3D
@@ -140,6 +160,16 @@ func _ready():
 			skeleton.add_child(right_hand_attachment)
 			right_hand_attachment.owner = self
 			print("Created BoneAttachment3D for right hand: ", right_hand_bone_name)
+
+	# Find collision shape for stance adjustments
+	for child in get_children():
+		if child is CollisionShape3D:
+			collision_shape = child
+			if collision_shape.shape is CapsuleShape3D:
+				capsule_shape = collision_shape.shape
+				standing_height = capsule_shape.height
+				print("Found capsule shape, standing height: ", standing_height)
+			break
 
 	# Find cameras if not set (they should be children of this node)
 	if not fps_camera:
@@ -660,17 +690,138 @@ func _switch_camera(mode: int):
 		print("tps_camera: ", tps_camera)
 	print("=== End _switch_camera ===\n")
 
+func _handle_stance_input():
+	"""Handle stance change inputs"""
+	# Toggle crouch with C key
+	if Input.is_action_just_pressed("ui_page_down"):  # C key (will map in project settings)
+		if current_stance == Stance.STANDING:
+			target_stance = Stance.CROUCHING
+		elif current_stance == Stance.CROUCHING:
+			target_stance = Stance.STANDING
+
+	# Toggle prone with Z key
+	if Input.is_action_just_pressed("ui_end"):  # Z key (will map in project settings)
+		if current_stance == Stance.STANDING or current_stance == Stance.CROUCHING:
+			target_stance = Stance.PRONE
+		elif current_stance == Stance.PRONE:
+			target_stance = Stance.STANDING
+
+func _update_stance(delta):
+	"""Update current stance with smooth transitions"""
+	if not capsule_shape or not collision_shape:
+		return
+
+	# Transition stance
+	if current_stance != target_stance:
+		current_stance = target_stance
+
+	# Get target height and rotation based on stance
+	var target_height = standing_height
+	var target_pitch = 0.0  # Character pitch rotation (for prone)
+
+	match current_stance:
+		Stance.STANDING:
+			target_height = standing_height
+			target_pitch = 0.0
+		Stance.CROUCHING:
+			target_height = crouching_height
+			target_pitch = 0.0
+		Stance.PRONE:
+			target_height = prone_height
+			target_pitch = deg_to_rad(85)  # Almost horizontal
+
+	# Smoothly interpolate capsule height
+	capsule_shape.height = lerp(capsule_shape.height, target_height, stance_transition_speed * delta)
+
+	# Smoothly interpolate character pitch for prone
+	var current_pitch = rotation.x
+	rotation.x = lerp_angle(current_pitch, target_pitch, stance_transition_speed * delta)
+
+	# Adjust collision shape position (capsule center moves down when shorter)
+	var height_diff = standing_height - capsule_shape.height
+	collision_shape.position.y = (standing_height / 2.0) - (height_diff / 2.0)
+
+	# Update IK targets based on stance
+	_update_ik_for_stance(delta)
+
+func _update_ik_for_stance(delta):
+	"""Adjust IK target positions based on current stance and jump state"""
+	if not ik_enabled:
+		return
+
+	var ik_targets_node = get_node_or_null("IKTargets")
+	if not ik_targets_node:
+		return
+
+	var left_foot_target = ik_targets_node.get_node_or_null("LeftFootTarget")
+	var right_foot_target = ik_targets_node.get_node_or_null("RightFootTarget")
+	var left_hand_target = ik_targets_node.get_node_or_null("LeftHandTarget")
+	var right_hand_target = ik_targets_node.get_node_or_null("RightHandTarget")
+
+	# Adjust feet based on stance and jump
+	if left_foot_target and right_foot_target and skeleton:
+		var base_foot_height = -0.9  # Default standing foot position
+
+		if is_jumping:
+			# During jump, bring feet up
+			var jump_blend = min(jump_time / max_jump_time, 1.0)
+			base_foot_height = lerp(-0.9, -0.3, jump_blend)  # Feet come up during jump
+		else:
+			# Adjust feet based on stance
+			match current_stance:
+				Stance.STANDING:
+					base_foot_height = -0.9
+				Stance.CROUCHING:
+					base_foot_height = -0.5  # Feet closer to body when crouching
+				Stance.PRONE:
+					base_foot_height = 0.0  # Feet level with body when prone
+
+		# Set foot positions (local to character)
+		left_foot_target.position.y = lerp(left_foot_target.position.y, base_foot_height, stance_transition_speed * delta)
+		right_foot_target.position.y = lerp(right_foot_target.position.y, base_foot_height, stance_transition_speed * delta)
+
+	# Adjust hands based on stance (when not holding weapon)
+	if not equipped_weapon and left_hand_target and right_hand_target:
+		var hand_height = 0.3  # Default hand position
+
+		match current_stance:
+			Stance.STANDING:
+				hand_height = 0.3
+			Stance.CROUCHING:
+				hand_height = 0.1  # Hands lower when crouching
+			Stance.PRONE:
+				hand_height = -0.2  # Hands supporting body when prone
+
+		left_hand_target.position.y = lerp(left_hand_target.position.y, hand_height, stance_transition_speed * delta)
+		right_hand_target.position.y = lerp(right_hand_target.position.y, hand_height, stance_transition_speed * delta)
+
 func _physics_process(delta):
 	if ragdoll_enabled:
 		return
 
+	# Handle stance changes
+	_handle_stance_input()
+	_update_stance(delta)
+
 	# Apply gravity
 	if not is_on_floor():
 		velocity.y -= gravity * delta
+	else:
+		# Reset jump state when landing
+		if is_jumping:
+			is_jumping = false
+			jump_time = 0.0
 
-	# Handle jump
+	# Handle jump - only when standing or crouching
 	if Input.is_action_just_pressed("jump") and is_on_floor():
-		velocity.y = jump_velocity
+		if current_stance != Stance.PRONE:
+			velocity.y = jump_velocity
+			is_jumping = true
+			jump_time = 0.0
+
+	# Update jump time for IK blending
+	if is_jumping:
+		jump_time += delta
 
 	# Get input direction
 	var input_dir = Input.get_vector("move_left", "move_right", "move_forward", "move_back")
@@ -696,8 +847,15 @@ func _physics_process(delta):
 	if input_dir.length() > 0.1:
 		direction = (transform.basis * Vector3(input_dir.x, 0, input_dir.y)).normalized()
 
-	# Apply movement
-	var current_speed = sprint_speed if Input.is_action_pressed("sprint") else walk_speed
+	# Apply movement - speed depends on stance
+	var current_speed = walk_speed
+	match current_stance:
+		Stance.STANDING:
+			current_speed = sprint_speed if Input.is_action_pressed("sprint") else walk_speed
+		Stance.CROUCHING:
+			current_speed = crouch_speed
+		Stance.PRONE:
+			current_speed = prone_speed
 
 	if direction:
 		velocity.x = direction.x * current_speed
