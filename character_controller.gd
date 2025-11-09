@@ -1379,12 +1379,50 @@ func _trigger_muzzle_flash():
 	if not equipped_weapon or not equipped_weapon.muzzle_point:
 		return
 
-	# Create muzzle flash light if it doesn't exist
+	# Create one-shot muzzle flash particles
+	var flash_particles = CPUParticles3D.new()
+	equipped_weapon.muzzle_point.add_child(flash_particles)
+
+	# Configure flash particles
+	flash_particles.emitting = true
+	flash_particles.one_shot = true
+	flash_particles.explosiveness = 1.0
+	flash_particles.amount = 10
+	flash_particles.lifetime = 0.1
+	flash_particles.speed_scale = 3.0
+
+	# Emission shape - cone forward
+	flash_particles.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+	flash_particles.emission_sphere_radius = 0.02
+	flash_particles.direction = Vector3(0, 0, 1)  # Forward in local space
+	flash_particles.spread = 15.0
+
+	# Particle properties
+	flash_particles.initial_velocity_min = 3.0
+	flash_particles.initial_velocity_max = 6.0
+	flash_particles.gravity = Vector3.ZERO
+
+	# Visual - bright yellow/orange flash
+	flash_particles.scale_amount_min = 0.1
+	flash_particles.scale_amount_max = 0.15
+	flash_particles.color = Color(1.0, 0.9, 0.5, 1.0)
+
+	# Fade out quickly
+	var gradient = Gradient.new()
+	gradient.add_point(0.0, Color(1, 1, 1, 1))
+	gradient.add_point(1.0, Color(1, 1, 1, 0))
+	flash_particles.color_ramp = gradient
+
+	# Auto-delete
+	var timer = get_tree().create_timer(flash_particles.lifetime + 0.05)
+	timer.timeout.connect(func(): flash_particles.queue_free())
+
+	# Also create bright light for flash
 	if not muzzle_flash_light:
 		muzzle_flash_light = OmniLight3D.new()
-		muzzle_flash_light.light_color = Color(1.0, 0.8, 0.4)  # Orange-yellow flash
-		muzzle_flash_light.light_energy = 3.0
-		muzzle_flash_light.omni_range = 5.0
+		muzzle_flash_light.light_color = Color(1.0, 0.9, 0.6)  # Bright yellow-white
+		muzzle_flash_light.light_energy = 10.0  # Much brighter
+		muzzle_flash_light.omni_range = 8.0
 		muzzle_flash_light.omni_attenuation = 2.0
 		equipped_weapon.muzzle_point.add_child(muzzle_flash_light)
 
