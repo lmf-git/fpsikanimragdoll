@@ -1366,9 +1366,29 @@ func _update_weapon_ik_targets():
 	# Update left hand IK target ONLY for two-handed weapons (rifles)
 	var left_hand_target = ik_targets_node.get_node_or_null("LeftHandTarget")
 	if left_hand_target:
-		if equipped_weapon.is_two_handed and equipped_weapon.secondary_grip:
-			# Two-handed weapon (rifle): left hand to foregrip
-			left_hand_target.global_position = equipped_weapon.secondary_grip.global_position
+		if equipped_weapon.is_two_handed:
+			# Two-handed weapon (rifle/assault rifle): Position left hand for foregrip
+			# Left hand should be higher and further forward than right hand
+			if equipped_weapon.secondary_grip:
+				# If weapon has a secondary grip node, use it as base
+				left_hand_target.global_position = equipped_weapon.secondary_grip.global_position
+			else:
+				# No secondary grip - calculate position relative to right hand
+				# Position left hand forward and slightly up from right hand
+				var body_basis = Basis(Vector3.UP, body_rotation_y)
+
+				# Start from right hand target position
+				var right_hand_pos = right_hand_target.global_position if right_hand_target else global_position
+
+				# Offset for assault rifle foregrip:
+				# - Forward (along weapon barrel): 0.35m in front of right hand
+				# - Up: 0.05m higher than right hand
+				# - No left/right offset (centerline)
+				var foregrip_offset = Vector3(0.0, 0.05, -0.35)  # Higher and forward
+
+				# Apply body-relative offset
+				var left_hand_pos = right_hand_pos + body_basis * foregrip_offset
+				left_hand_target.global_position = left_hand_pos
 		else:
 			# Pistol: disable left hand IK by moving target to default position
 			# This allows left hand to use idle animation instead
