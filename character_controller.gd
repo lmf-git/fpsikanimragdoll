@@ -52,9 +52,9 @@ enum WeaponState { SHEATHED, READY, AIMING }
 var weapon_state: WeaponState = WeaponState.READY
 var is_weapon_sheathed: bool = false  # Toggle for sheathed state
 
-# Weapon positioning
-@export var aim_weapon_offset: Vector3 = Vector3(0.3, -0.2, -0.4)  # Offset when aiming down sights
-@export var ready_weapon_offset: Vector3 = Vector3(0.4, -0.3, -0.3)  # Offset when ready/moving
+# Weapon positioning - skeleton-relative offsets
+@export var aim_weapon_offset: Vector3 = Vector3(0.3, -0.05, -0.5)  # Offset when aiming down sights (more up and forward)
+@export var ready_weapon_offset: Vector3 = Vector3(0.35, -0.15, -0.4)  # Offset when ready/moving (more up and forward)
 @export var sheathed_weapon_offset: Vector3 = Vector3(0.5, -0.6, 0.2)  # Offset when sheathed at side
 @export var weapon_transition_speed: float = 8.0  # Speed of state transitions
 
@@ -237,6 +237,16 @@ func _create_ik_system():
 
 func _create_ragdoll_bones():
 	print("\n=== Creating Ragdoll Bones at Runtime ===")
+
+	# RAGDOLL BEST PRACTICES IMPLEMENTED:
+	# 1. Heavy torso/head mass (10kg/5kg/3kg) acts as anchor to prevent spinning
+	# 2. Locked torso joints (0° swing/twist + axis locks) for rigid upper body
+	# 3. HINGE joints for single-axis movement (knees, elbows, ankles, wrists)
+	# 4. Tight collision shapes (small radius) to prevent excess leverage
+	# 5. Maximum constraint enforcement (ERP=1.0, CFM=0.0) for locked bones
+	# 6. High angular damping (5.0) on core bones to prevent rotation
+	# 7. Self-collision disabled between all physical bones
+	# 8. Proper collision layers: ragdoll on layer 2, world on layer 1
 
 	# Delete any existing physical bones to ensure we use latest settings
 	var existing_bones = []
@@ -890,9 +900,6 @@ func _attach_camera_to_ragdoll_head():
 
 	print("Attaching FPS camera to ragdoll head: ", physical_head_bone.name)
 
-	# Store original camera transform
-	var camera_local_transform = fps_camera.transform
-
 	# Remove camera from character
 	if fps_camera.get_parent():
 		fps_camera.get_parent().remove_child(fps_camera)
@@ -1016,7 +1023,7 @@ func _calculate_weapon_sway(delta: float, is_moving: bool) -> Vector3:
 	return Vector3(sway_x, sway_y, 0)
 
 func _update_weapon_position():
-	"""Update weapon position to follow hand bones and update IK targets"""
+	"""Update weapon position and rotation to follow hand bones (skeleton-based, not camera-based)"""
 	if not equipped_weapon or not skeleton or right_hand_bone_id < 0:
 		return
 
@@ -1024,7 +1031,7 @@ func _update_weapon_position():
 	if not ik_targets_node:
 		return
 
-	# Get camera transform for weapon rotation
+	# Get camera rotation for IK target positioning (skeleton-based with camera aim direction)
 	var active_camera = fps_camera if camera_mode == 0 else tps_camera
 	if not active_camera:
 		return
@@ -1068,8 +1075,8 @@ func _update_weapon_position():
 	# STEP 2: Weapon follows right hand bone (after IK has been applied)
 	var right_hand_transform = skeleton.global_transform * skeleton.get_bone_global_pose(right_hand_bone_id)
 
-	# Align weapon rotation to camera direction for aiming
-	equipped_weapon.global_transform.basis = camera_transform.basis
+	# Weapon rotation follows RIGHT HAND bone, not camera (fully skeleton-based)
+	equipped_weapon.global_transform.basis = right_hand_transform.basis
 
 	# Position weapon so its grip aligns with the right hand bone
 	if equipped_weapon.main_grip:
@@ -1089,9 +1096,9 @@ func _update_weapon_position():
 		else:
 			# Pistol: disable left hand IK by moving target to default position
 			# This allows left hand to use idle animation instead
-			var left_hand_bone_id = skeleton.find_bone("characters3d.com___L_Hand")
-			if left_hand_bone_id >= 0:
-				var left_hand_rest = skeleton.global_transform * skeleton.get_bone_rest(left_hand_bone_id).origin
+			var l_hand_id = skeleton.find_bone("characters3d.com___L_Hand")
+			if l_hand_id >= 0:
+				var left_hand_rest = skeleton.global_transform * skeleton.get_bone_rest(l_hand_id).origin
 				left_hand_target.global_position = left_hand_rest
 
 func _process(_delta):
