@@ -82,8 +82,8 @@ var weapon_state: WeaponState = WeaponState.READY
 var is_weapon_sheathed: bool = false  # Toggle for sheathed state
 
 # Weapon positioning - skeleton-relative offsets
-@export var aim_weapon_offset: Vector3 = Vector3(0.0, 0.35, -0.9)  # Offset when aiming down sights (higher and more forward, centered)
-@export var ready_weapon_offset: Vector3 = Vector3(0.15, 0.1, -0.8)  # Offset when ready/moving (higher and more forward)
+@export var aim_weapon_offset: Vector3 = Vector3(0.0, 0.35, -1.1)  # Offset when aiming down sights (higher and more forward, centered)
+@export var ready_weapon_offset: Vector3 = Vector3(0.15, 0.1, -1.0)  # Offset when ready/moving (higher and more forward)
 @export var sheathed_weapon_offset: Vector3 = Vector3(0.5, -0.6, 0.2)  # Offset when sheathed at side
 @export var weapon_transition_speed: float = 8.0  # Speed of state transitions
 
@@ -1514,19 +1514,18 @@ func _update_weapon_ik_targets():
 	if right_hand_target:
 		var base_offset = target_offset + current_sway
 
-		# When weapon is equipped and aiming, hands should shift left/right based on head direction
+		# Hands should shift left/right based on where player is aiming
 		# Calculate horizontal offset based on camera rotation relative to body
-		if weapon_state == WeaponState.AIMING or weapon_state == WeaponState.READY:
-			var camera_rotation_y = active_camera.global_rotation.y
-			var rotation_diff = camera_rotation_y - body_rotation_y
+		var camera_rotation_y = active_camera.global_rotation.y
+		var rotation_diff = camera_rotation_y - body_rotation_y
 
-			# Normalize rotation difference to [-PI, PI]
-			rotation_diff = fmod(rotation_diff + PI, TAU) - PI
+		# Normalize rotation difference to [-PI, PI]
+		rotation_diff = fmod(rotation_diff + PI, TAU) - PI
 
-			# Convert rotation difference to horizontal hand offset
-			# Multiply by distance from body to get more shift when looking further away
-			var horizontal_shift = sin(rotation_diff) * abs(base_offset.z) * 0.5  # 50% of forward distance
-			base_offset.x = horizontal_shift
+		# Convert rotation difference to horizontal hand offset
+		# Multiply by distance from body to get more shift when looking further away
+		var horizontal_shift = sin(rotation_diff) * abs(base_offset.z) * 0.8  # 80% of forward distance
+		base_offset.x = horizontal_shift
 
 		# Use chest bone as anchor point for body-relative positioning
 		var anchor_transform: Transform3D
