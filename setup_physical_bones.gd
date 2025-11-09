@@ -1,43 +1,51 @@
 @tool
 extends EditorScript
 
-# Helper script to automatically set up physical bones for ragdoll
-# Run this from the editor: File -> Run -> setup_physical_bones.gd
+# Improved physical bones setup script
+# This will find the skeleton automatically and create all physical bones
 
 func _run():
+	print("\n=== Physical Bones Setup Starting ===\n")
+
 	var scene_root = get_scene()
 	if not scene_root:
-		print("No scene open")
+		print("ERROR: No scene open! Please open character.tscn first")
 		return
 
-	# Find character node
-	var character = scene_root.get_node_or_null("Character")
-	if not character:
-		print("Character node not found")
-		return
+	print("Scene root: ", scene_root.name)
 
-	# Find skeleton
-	var skeleton = find_skeleton(character)
+	# Find skeleton recursively
+	var skeleton = find_skeleton_recursive(scene_root)
+
 	if not skeleton:
-		print("Skeleton3D not found")
+		print("ERROR: No Skeleton3D found in scene!")
+		print("Make sure character.tscn is open")
 		return
 
-	# Remove existing physical bones
+	print("Found skeleton: ", skeleton.name)
+	print("Skeleton has ", skeleton.get_bone_count(), " bones")
+
+	# Remove existing physical bones and simulator
+	print("\nRemoving old physical bones...")
 	for child in skeleton.get_children():
 		if child is PhysicalBone3D or child is PhysicalBoneSimulator3D:
+			print("  Removing: ", child.name)
 			child.queue_free()
 
-	print("Creating physical bones...")
+	# Wait a frame for cleanup
+	await get_tree().process_frame
 
-	# Create physical bone simulator first
+	print("\nCreating PhysicalBoneSimulator3D...")
 	var simulator = PhysicalBoneSimulator3D.new()
 	simulator.name = "PhysicalBoneSimulator3D"
 	skeleton.add_child(simulator, true)
-	simulator.owner = get_scene()
+	simulator.owner = scene_root
+	print("  Created: ", simulator.name)
 
-	# Define bone configurations
+	print("\nCreating physical bones...")
+
+	# Define bone configurations: [bone_name, shape_type, size, mass, joint_type]
 	var bone_configs = [
-		# [bone_name, shape_type, size, mass, joint_type]
 		# Torso
 		["characters3d.com___Hips", "capsule", Vector3(0.3, 0.2, 0.3), 3.0, PhysicalBone3D.JOINT_TYPE_NONE],
 		["characters3d.com___Spine", "capsule", Vector3(0.25, 0.15, 0.25), 2.0, PhysicalBone3D.JOINT_TYPE_CONE],
@@ -80,7 +88,7 @@ func _run():
 
 		var bone_id = skeleton.find_bone(bone_name)
 		if bone_id < 0:
-			print("Bone not found: " + bone_name)
+			print("  WARNING: Bone not found: ", bone_name)
 			continue
 
 		# Create physical bone
@@ -91,16 +99,6 @@ func _run():
 		physical_bone.friction = 0.6
 		physical_bone.bounce = 0.0
 		physical_bone.joint_type = joint_type
-
-		# Configure joint limits based on type
-		if joint_type == PhysicalBone3D.JOINT_TYPE_CONE:
-			physical_bone.joint_constraints.set("angular_limit_enabled", true)
-			physical_bone.joint_constraints.set("swing_span", deg_to_rad(45))
-			physical_bone.joint_constraints.set("twist_span", deg_to_rad(30))
-		elif joint_type == PhysicalBone3D.JOINT_TYPE_HINGE:
-			physical_bone.joint_constraints.set("angular_limit_enabled", true)
-			physical_bone.joint_constraints.set("angular_limit_lower", deg_to_rad(-120))
-			physical_bone.joint_constraints.set("angular_limit_upper", deg_to_rad(0))
 
 		# Create collision shape
 		var collision_shape = CollisionShape3D.new()
@@ -116,7 +114,6 @@ func _run():
 				capsule.radius = size.x
 				capsule.height = size.y * 2
 				shape = capsule
-				# Rotate capsule to align with bone
 				collision_shape.rotation_degrees = Vector3(0, 0, 90)
 			"box":
 				var box = BoxShape3D.new()
@@ -125,23 +122,27 @@ func _run():
 
 		collision_shape.shape = shape
 		physical_bone.add_child(collision_shape, true)
-		collision_shape.owner = get_scene()
+		collision_shape.owner = scene_root
 
 		# Add to skeleton
 		skeleton.add_child(physical_bone, true)
-		physical_bone.owner = get_scene()
+		physical_bone.owner = scene_root
 
 		created_count += 1
-		print("Created physical bone: " + physical_bone.name)
+		print("  Created: ", physical_bone.name)
 
-	print("Physical bones setup complete! Created " + str(created_count) + " bones.")
-	print("PhysicalBoneSimulator3D added.")
+	print("\n=== Setup Complete! ===")
+	print("Created ", created_count, " physical bones")
+	print("Created PhysicalBoneSimulator3D")
+	print("\nNow save the scene (Ctrl+S) and test ragdoll with R key!")
 
-func find_skeleton(node: Node) -> Skeleton3D:
+func find_skeleton_recursive(node: Node) -> Skeleton3D:
 	if node is Skeleton3D:
 		return node
+
 	for child in node.get_children():
-		var result = find_skeleton(child)
+		var result = find_skeleton_recursive(child)
 		if result:
 			return result
+
 	return null
