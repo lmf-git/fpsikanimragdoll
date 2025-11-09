@@ -156,10 +156,14 @@ func _ready():
 		if right_hand_bone_id >= 0:
 			right_hand_attachment = BoneAttachment3D.new()
 			right_hand_attachment.name = "RightHandAttachment"
-			right_hand_attachment.bone_name = right_hand_bone_name
-			right_hand_attachment.bone_idx = right_hand_bone_id  # Set bone index for better tracking
+			# Add to skeleton first, then set bone properties
 			skeleton.add_child(right_hand_attachment)
 			right_hand_attachment.owner = self
+			# Set bone name after adding to tree - this is important!
+			right_hand_attachment.bone_name = right_hand_bone_name
+			right_hand_attachment.bone_idx = right_hand_bone_id
+			# Ensure it follows the bone, not override it
+			right_hand_attachment.override_pose = false
 			print("Created BoneAttachment3D for right hand: ", right_hand_bone_name, " (bone_idx: ", right_hand_bone_id, ")")
 			print("  Skeleton: ", skeleton.name, ", Bone global pose: ", skeleton.get_bone_global_pose(right_hand_bone_id).origin)
 
@@ -233,8 +237,8 @@ func _create_ik_system():
 		left_hand_ik.name = "LeftHandIK"
 		left_hand_ik.root_bone = "characters3d.com___L_Shoulder"
 		left_hand_ik.tip_bone = "characters3d.com___L_Hand"
-		left_hand_ik.interpolation = 0.5
-		left_hand_ik.max_iterations = 10
+		left_hand_ik.interpolation = 1.0  # Instant IK solving for responsive weapon movement
+		left_hand_ik.max_iterations = 20  # More iterations for better accuracy
 		skeleton.add_child(left_hand_ik)
 		left_hand_ik.set_target_node(left_hand_target.get_path())
 		print("Created LeftHandIK")
@@ -245,8 +249,8 @@ func _create_ik_system():
 		right_hand_ik.name = "RightHandIK"
 		right_hand_ik.root_bone = "characters3d.com___R_Shoulder"
 		right_hand_ik.tip_bone = "characters3d.com___R_Hand"
-		right_hand_ik.interpolation = 0.5
-		right_hand_ik.max_iterations = 10
+		right_hand_ik.interpolation = 1.0  # Instant IK solving for responsive weapon movement
+		right_hand_ik.max_iterations = 20  # More iterations for better accuracy
 		skeleton.add_child(right_hand_ik)
 		right_hand_ik.set_target_node(right_hand_target.get_path())
 		print("Created RightHandIK")
@@ -1369,6 +1373,11 @@ func _update_weapon_ik_targets():
 		# This prevents hand from moving left/right when camera orbits in TPS
 		var body_basis = Basis(Vector3.UP, body_rotation_y)  # Character's facing, not camera
 		var target_pos = anchor_transform.origin + body_basis * base_offset
+
+		# DEBUG: Track target movement when state changes
+		if weapon_state == WeaponState.AIMING and right_hand_target.global_position.distance_to(target_pos) > 0.01:
+			print("AIMING: Moving hand target from ", right_hand_target.global_position, " to ", target_pos)
+
 		right_hand_target.global_position = target_pos
 
 	# Update left hand IK target ONLY for two-handed weapons (rifles)
