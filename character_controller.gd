@@ -136,6 +136,10 @@ func _ready():
 	print("TPS Camera: ", tps_camera)
 	print("Initial camera mode: ", camera_mode)
 
+	# Create IK system at runtime
+	if skeleton:
+		_create_ik_system()
+
 	# Print IK setup
 	print("\n=== IK Setup ===")
 	print("IK enabled: ", ik_enabled)
@@ -170,6 +174,74 @@ func find_mesh_instance(node: Node) -> MeshInstance3D:
 		if result:
 			return result
 	return null
+
+func _create_ik_system():
+	"""Create SkeletonIK3D nodes at runtime and link them to targets"""
+	print("\n=== Creating IK System ===")
+
+	# Find IK target nodes
+	var ik_targets_node = get_node_or_null("IKTargets")
+	if not ik_targets_node:
+		print("ERROR: IKTargets node not found!")
+		return
+
+	var left_hand_target = ik_targets_node.get_node_or_null("LeftHandTarget")
+	var right_hand_target = ik_targets_node.get_node_or_null("RightHandTarget")
+	var left_foot_target = ik_targets_node.get_node_or_null("LeftFootTarget")
+	var right_foot_target = ik_targets_node.get_node_or_null("RightFootTarget")
+
+	print("Found targets - LH: ", left_hand_target, ", RH: ", right_hand_target,
+	      ", LF: ", left_foot_target, ", RF: ", right_foot_target)
+
+	# Create LeftHandIK
+	if left_hand_target:
+		left_hand_ik = SkeletonIK3D.new()
+		left_hand_ik.name = "LeftHandIK"
+		left_hand_ik.root_bone = "characters3d.com___L_Shoulder"
+		left_hand_ik.tip_bone = "characters3d.com___L_Hand"
+		left_hand_ik.interpolation = 0.5
+		left_hand_ik.max_iterations = 10
+		skeleton.add_child(left_hand_ik)
+		left_hand_ik.set_target_node(left_hand_target.get_path())
+		print("Created LeftHandIK")
+
+	# Create RightHandIK
+	if right_hand_target:
+		right_hand_ik = SkeletonIK3D.new()
+		right_hand_ik.name = "RightHandIK"
+		right_hand_ik.root_bone = "characters3d.com___R_Shoulder"
+		right_hand_ik.tip_bone = "characters3d.com___R_Hand"
+		right_hand_ik.interpolation = 0.5
+		right_hand_ik.max_iterations = 10
+		skeleton.add_child(right_hand_ik)
+		right_hand_ik.set_target_node(right_hand_target.get_path())
+		print("Created RightHandIK")
+
+	# Create LeftFootIK
+	if left_foot_target:
+		left_foot_ik = SkeletonIK3D.new()
+		left_foot_ik.name = "LeftFootIK"
+		left_foot_ik.root_bone = "characters3d.com___L_Upper_Leg"
+		left_foot_ik.tip_bone = "characters3d.com___L_Foot"
+		left_foot_ik.interpolation = 0.5
+		left_foot_ik.max_iterations = 10
+		skeleton.add_child(left_foot_ik)
+		left_foot_ik.set_target_node(left_foot_target.get_path())
+		print("Created LeftFootIK")
+
+	# Create RightFootIK
+	if right_foot_target:
+		right_foot_ik = SkeletonIK3D.new()
+		right_foot_ik.name = "RightFootIK"
+		right_foot_ik.root_bone = "characters3d.com___R_Upper_Leg"
+		right_foot_ik.tip_bone = "characters3d.com___R_Foot"
+		right_foot_ik.interpolation = 0.5
+		right_foot_ik.max_iterations = 10
+		skeleton.add_child(right_foot_ik)
+		right_foot_ik.set_target_node(right_foot_target.get_path())
+		print("Created RightFootIK")
+
+	print("=== IK System Created ===\n")
 
 func _create_ragdoll_bones():
 	print("\n=== Creating Ragdoll Bones at Runtime ===")
