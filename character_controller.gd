@@ -1119,11 +1119,19 @@ func _update_weapon_ik_targets():
 
 func _update_weapon_to_hand():
 	"""Position weapon to follow IK-transformed hand bone (called AFTER IK is applied)"""
-	if not equipped_weapon or not skeleton or right_hand_bone_id < 0:
+	if not equipped_weapon:
+		print("DEBUG: _update_weapon_to_hand() - no equipped_weapon")
+		return
+	if not skeleton:
+		print("DEBUG: _update_weapon_to_hand() - no skeleton")
+		return
+	if right_hand_bone_id < 0:
+		print("DEBUG: _update_weapon_to_hand() - invalid right_hand_bone_id: ", right_hand_bone_id)
 		return
 
 	# Get the IK-transformed hand bone transform
 	var right_hand_transform = skeleton.global_transform * skeleton.get_bone_global_pose(right_hand_bone_id)
+	print("DEBUG: _update_weapon_to_hand() - hand transform: ", right_hand_transform.origin)
 
 	# STEP 1: Position weapon so grip point aligns with hand bone origin
 	# This must be done FIRST, before applying any rotation offsets
@@ -1154,9 +1162,11 @@ func _update_weapon_to_hand():
 		# Recalculate position after rotation (rotation happens around grip point)
 		grip_world_offset = equipped_weapon.global_transform.basis * grip_local_pos
 		equipped_weapon.global_position = right_hand_transform.origin - grip_world_offset
+		print("DEBUG: Set weapon position to: ", equipped_weapon.global_position)
 	else:
 		# Fallback: if no grip point, just match hand transform
 		equipped_weapon.global_transform = right_hand_transform
+		print("DEBUG: No main_grip, set weapon transform to hand transform")
 
 func _process(_delta):
 	# WEAPON UPDATE ORDER - CRITICAL for proper IK-based positioning:
@@ -1191,4 +1201,5 @@ func _process(_delta):
 
 	# STEP 3: Position weapon to follow IK-transformed hand bone
 	if equipped_weapon:
+		print("DEBUG: _process() calling _update_weapon_to_hand(), ik_enabled=", ik_enabled)
 		_update_weapon_to_hand()
