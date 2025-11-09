@@ -38,11 +38,27 @@ class_name CharacterController
 
 # Ragdoll bone configuration - bones that will have physics
 const RAGDOLL_BONES = [
+	# Torso
 	"Hips", "Spine", "Chest", "Upper_Chest", "Neck", "Head",
+	# Left arm
 	"L_Shoulder", "L_Upper_Arm", "L_Lower_Arm", "L_Hand",
+	# Left fingers
+	"L_Thumb_Proximal", "L_Thumb_Intermediate", "L_Thumb_Distal",
+	"L_Index_Proximal", "L_Index_Intermediate", "L_Index_Distal",
+	"L_Middle_Proximal", "L_Middle_Intermediate", "L_Middle_Distal",
+	"L_Ring_Proximal", "L_Ring_Intermediate", "L_Ring_Distal",
+	"L_Little_Proximal", "L_Little_Intermediate", "L_Little_Distal",
+	# Right arm
 	"R_Shoulder", "R_Upper_Arm", "R_Lower_Arm", "R_Hand",
-	"L_Upper_Leg", "L_Lower_Leg", "L_Foot",
-	"R_Upper_Leg", "R_Lower_Leg", "R_Foot"
+	# Right fingers
+	"R_Thumb_Proximal", "R_Thumb_Intermediate", "R_Thumb_Distal",
+	"R_Index_Proximal", "R_Index_Intermediate", "R_Index_Distal",
+	"R_Middle_Proximal", "R_Middle_Intermediate", "R_Middle_Distal",
+	"R_Ring_Proximal", "R_Ring_Intermediate", "R_Ring_Distal",
+	"R_Little_Proximal", "R_Little_Intermediate", "R_Little_Distal",
+	# Legs
+	"L_Upper_Leg", "L_Lower_Leg", "L_Foot", "L_Toes",
+	"R_Upper_Leg", "R_Lower_Leg", "R_Foot", "R_Toes"
 ]
 
 # Internal variables
@@ -91,6 +107,12 @@ func _ready():
 		for i in range(skeleton.get_bone_count()):
 			print("  [", i, "] ", skeleton.get_bone_name(i))
 		print("=== End Bone List ===\n")
+
+	# Find cameras if not set (they should be children of this node)
+	if not fps_camera:
+		fps_camera = get_node_or_null("FPSCamera")
+	if not tps_camera:
+		tps_camera = get_node_or_null("TPSCamera")
 
 	print("FPS Camera: ", fps_camera)
 	print("TPS Camera: ", tps_camera)
@@ -163,8 +185,8 @@ func _create_ragdoll_bones():
 
 		# Create a simple capsule collision shape
 		var shape = CapsuleShape3D.new()
-		shape.radius = 0.05
-		shape.height = 0.2
+		shape.radius = 0.08
+		shape.height = 0.25
 
 		# Add collision shape
 		var collision_shape = CollisionShape3D.new()
@@ -174,14 +196,29 @@ func _create_ragdoll_bones():
 
 		# Physics properties
 		physical_bone.mass = 1.0
-		physical_bone.friction = 0.5
+		physical_bone.friction = 0.8
 		physical_bone.bounce = 0.0
+
+		# CRITICAL: Set collision layers and masks for proper physics
+		physical_bone.collision_layer = 2  # Layer 2 for ragdoll parts
+		physical_bone.collision_mask = 1   # Collide with layer 1 (world/ground)
 
 		# Add to skeleton
 		skeleton.add_child(physical_bone)
 		physical_bone.owner = get_tree().edited_scene_root if Engine.is_editor_hint() else self
 
 		bones_created += 1
+
+	# Set up collision exceptions between all physical bones (prevent self-collision)
+	var all_physical_bones = []
+	for child in skeleton.get_children():
+		if child is PhysicalBone3D:
+			all_physical_bones.append(child)
+
+	print("Setting up collision exceptions between ", all_physical_bones.size(), " bones...")
+	for i in range(all_physical_bones.size()):
+		for j in range(i + 1, all_physical_bones.size()):
+			all_physical_bones[i].add_collision_exception_with(all_physical_bones[j])
 
 	print("Created ", bones_created, " physical bones")
 	print("=== Ragdoll Creation Complete ===\n")

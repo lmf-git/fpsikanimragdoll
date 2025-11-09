@@ -2,7 +2,7 @@
 
 ## Current Status
 
-The character controller is mostly set up, but requires additional editor configuration for full functionality.
+The character controller is fully functional with automatic setup!
 
 ### What's Working
 - ✅ FPS camera with head tracking
@@ -11,10 +11,11 @@ The character controller is mostly set up, but requires additional editor config
 - ✅ Camera toggle (O key)
 - ✅ Mouse look
 - ✅ Head/neck bone tracking
+- ✅ **Ragdoll physics (auto-created at runtime)**
 
 ### What Needs Setup
-- ⚠️ SkeletonIK3D nodes (for IK functionality)
-- ⚠️ PhysicalBone3D nodes (for ragdoll)
+- ⚠️ SkeletonIK3D nodes (for IK functionality) - optional
+- ⚠️ Finger bones for ragdoll (waiting for bone names from user)
 
 ## Quick Setup with Editor Script
 

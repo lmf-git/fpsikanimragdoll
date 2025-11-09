@@ -28,35 +28,28 @@ func _find_skeleton(node: Node) -> Skeleton3D:
 	return null
 
 func _physics_process(_delta):
-	# Get camera rotation from parent controller
 	var controller = get_parent()
-	if not controller or not controller.has_method("get"):
+	if not controller:
 		return
 
-	var cam_rotation = controller.get("camera_rotation")
-	if not cam_rotation:
-		return
-
-	# Position at head bone if available, otherwise at controller position
+	# Position and orient camera based on head bone if available
 	if skeleton and head_bone_id >= 0:
-		# Get the global transform of the head bone
+		# Get the global transform of the head bone (includes all rotations from head tracking)
 		var head_global_transform = skeleton.global_transform * skeleton.get_bone_global_pose(head_bone_id)
+
 		# Position camera at head bone with offset
 		global_transform.origin = head_global_transform.origin + head_global_transform.basis * head_offset
+
+		# Use the head bone's rotation directly (this includes neck + head rotations from _update_head_look)
+		# The head bone rotation already has the aiming applied to it
+		global_transform.basis = head_global_transform.basis
 	else:
-		# Fallback: position relative to controller
-		global_transform.origin = controller.global_position + Vector3(0, 1.6, 0)
+		# Fallback: use manual camera rotation if no skeleton
+		var cam_rotation = controller.get("camera_rotation")
+		if cam_rotation:
+			global_transform.origin = controller.global_position + Vector3(0, 1.6, 0)
 
-	# Apply camera rotation
-	# In Godot, cameras look along -Z by default
-	# Model is now rotated 180° in scene, so it faces -Z correctly
-	var camera_transform = Transform3D()
-
-	# Apply yaw (rotate around Y axis)
-	camera_transform = camera_transform.rotated(Vector3.UP, cam_rotation.y)
-
-	# Apply pitch (rotate around the local right axis which is X)
-	camera_transform = camera_transform.rotated(camera_transform.basis.x, cam_rotation.x)
-
-	# Set the camera's basis
-	global_transform.basis = camera_transform.basis
+			var camera_transform = Transform3D()
+			camera_transform = camera_transform.rotated(Vector3.UP, cam_rotation.y)
+			camera_transform = camera_transform.rotated(camera_transform.basis.x, cam_rotation.x)
+			global_transform.basis = camera_transform.basis
