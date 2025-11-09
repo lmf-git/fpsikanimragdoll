@@ -179,7 +179,7 @@ func unequip():
 	# Re-enable physics
 	freeze_mode = RigidBody3D.FREEZE_MODE_STATIC  # Reset to default
 	freeze = false
-	gravity_scale = 1.0
+	gravity_scale = 2.0  # Use stronger gravity for dropped weapons
 	collision_layer = 4  # Weapon layer
 	collision_mask = 1   # Collide with world
 
@@ -295,12 +295,18 @@ func _drop_from_ragdoll():
 	global_position = world_pos
 	global_rotation = world_rot
 
-	# Enable full physics
+	# Enable full physics with stronger gravity for realistic fall
 	freeze_mode = RigidBody3D.FREEZE_MODE_STATIC
 	freeze = false
-	gravity_scale = 1.0
+	gravity_scale = 2.0  # Stronger gravity for more realistic weapon drop
 	collision_layer = 4  # Weapon layer
 	collision_mask = 1   # Collide with world
+
+	# Apply some bounce/friction properties for realistic impact
+	physics_material_override = PhysicsMaterial.new() if not physics_material_override else physics_material_override
+	if physics_material_override:
+		physics_material_override.bounce = 0.2  # Slight bounce
+		physics_material_override.friction = 0.6  # Moderate friction
 
 	# Apply velocity to continue motion
 	linear_velocity = world_vel
