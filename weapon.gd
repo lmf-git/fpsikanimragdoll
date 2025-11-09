@@ -122,7 +122,9 @@ func equip(character: Node3D, hand_attachment: Node3D = null):
 
 	# Set local transform relative to hand
 	# If we have a main_grip, offset the weapon so grip aligns with hand bone origin
+	print("DEBUG: main_grip = ", main_grip)
 	if main_grip:
+		print("DEBUG: main_grip exists, position = ", main_grip.position)
 		# Get grip offset in local space
 		var grip_local_pos = main_grip.position
 

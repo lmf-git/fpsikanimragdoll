@@ -367,16 +367,16 @@ func _create_ragdoll_bones():
 		shape.height = height
 
 		# Add collision shape
-		var collision_shape = CollisionShape3D.new()
-		collision_shape.shape = shape
+		var bone_collision_shape = CollisionShape3D.new()
+		bone_collision_shape.shape = shape
 
 		# Adjust collision shape position for specific bones
 		if bone_suffix in ["Head"]:
 			# Move head collider up slightly
-			collision_shape.position = Vector3(0, 0.05, 0)
+			bone_collision_shape.position = Vector3(0, 0.05, 0)
 
-		physical_bone.add_child(collision_shape)
-		collision_shape.owner = physical_bone
+		physical_bone.add_child(bone_collision_shape)
+		bone_collision_shape.owner = physical_bone
 
 		# Add debug visualization mesh
 		if debug_show_colliders:
@@ -392,7 +392,7 @@ func _create_ragdoll_bones():
 			debug_material.albedo_color = Color(0, 1, 0, 0.3)  # Green semi-transparent
 			debug_mesh.material_override = debug_material
 
-			collision_shape.add_child(debug_mesh)
+			bone_collision_shape.add_child(debug_mesh)
 			debug_mesh.owner = physical_bone
 
 		# CRITICAL: Configure joint to connect to parent bone
