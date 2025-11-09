@@ -464,16 +464,17 @@ func _create_ragdoll_bones():
 		# Apply limits based on joint type
 		if use_hinge:
 			# Hinge joints use different constraint properties
-			# For limbs (knees/elbows): only bend one way (backward)
+			# For limbs (knees/elbows): only bend one way (forward, NOT backward/hyperextension)
 			# For torso (spine/neck/head): allow bending both ways (forward/back)
 			if bone_suffix in ["Spine", "Chest", "Upper_Chest", "Neck", "Head"]:
 				# Torso can bend forward and backward
 				physical_bone.set("joint_constraints/angular_limit_lower", -swing_limit)
 				physical_bone.set("joint_constraints/angular_limit_upper", swing_limit)
 			else:
-				# Limbs only bend one way
-				physical_bone.set("joint_constraints/angular_limit_lower", -swing_limit)
-				physical_bone.set("joint_constraints/angular_limit_upper", 0)
+				# Limbs only bend forward, NO backward bending (prevents hyperextension)
+				# 0 = straight/rest position, positive = bend forward, negative = hyperextend (bad!)
+				physical_bone.set("joint_constraints/angular_limit_lower", 0)  # Prevent hyperextension
+				physical_bone.set("joint_constraints/angular_limit_upper", swing_limit)  # Allow forward bend
 			physical_bone.set("joint_constraints/angular_limit_enabled", true)
 		else:
 			# Cone joints
@@ -1110,23 +1111,41 @@ func _update_weapon_to_hand():
 	if not equipped_weapon or not skeleton or right_hand_bone_id < 0:
 		return
 
-	# Get the IK-transformed hand bone position
+	# Get the IK-transformed hand bone transform
 	var right_hand_transform = skeleton.global_transform * skeleton.get_bone_global_pose(right_hand_bone_id)
 
-	# Weapon rotation: hand bone rotation with adjustment for proper weapon orientation
-	# The hand bone's natural orientation doesn't match holding a gun, so we need to rotate it
-	# Rotate -90 degrees around X to make barrel point forward (hand points down naturally)
-	var weapon_rotation_offset = Basis(Vector3.RIGHT, deg_to_rad(-90.0))
-	equipped_weapon.global_transform.basis = right_hand_transform.basis * weapon_rotation_offset
-
-	# Position weapon so its grip aligns with the right hand bone
+	# STEP 1: Position weapon so grip point aligns with hand bone origin
+	# This must be done FIRST, before applying any rotation offsets
 	if equipped_weapon.main_grip:
+		# Calculate where weapon should be placed so grip aligns with hand
 		var grip_local_pos = equipped_weapon.main_grip.position
+
+		# First, match hand rotation directly (no offset yet)
+		equipped_weapon.global_transform.basis = right_hand_transform.basis
+
+		# Calculate grip offset in world space
 		var grip_world_offset = equipped_weapon.global_transform.basis * grip_local_pos
+
+		# Position weapon so grip point is at hand bone origin
+		equipped_weapon.global_position = right_hand_transform.origin - grip_world_offset
+
+		# STEP 2: Apply weapon-specific rotation offset AFTER positioning
+		# This rotates the weapon around the grip point (hand bone origin)
+		# Adjust these values to orient the weapon correctly in hand
+		var rotation_offset = Basis()
+		rotation_offset = rotation_offset.rotated(Vector3.RIGHT, deg_to_rad(-90))  # Pitch
+		# Add more rotations here if needed:
+		# rotation_offset = rotation_offset.rotated(Vector3.UP, deg_to_rad(X))     # Yaw
+		# rotation_offset = rotation_offset.rotated(Vector3.FORWARD, deg_to_rad(X)) # Roll
+
+		equipped_weapon.global_transform.basis = right_hand_transform.basis * rotation_offset
+
+		# Recalculate position after rotation (rotation happens around grip point)
+		grip_world_offset = equipped_weapon.global_transform.basis * grip_local_pos
 		equipped_weapon.global_position = right_hand_transform.origin - grip_world_offset
 	else:
-		# Fallback: if no grip point defined, use simple offset
-		equipped_weapon.global_position = right_hand_transform.origin
+		# Fallback: if no grip point, just match hand transform
+		equipped_weapon.global_transform = right_hand_transform
 
 func _process(_delta):
 	# WEAPON UPDATE ORDER - CRITICAL for proper IK-based positioning:
