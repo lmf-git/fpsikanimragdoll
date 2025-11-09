@@ -1,0 +1,66 @@
+[gd_scene load_steps=9 format=3 uid="uid://pistol001"]
+
+[ext_resource type="Script" path="res://weapon.gd" id="1"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_pistol"]
+size = Vector3(0.05, 0.15, 0.2)
+
+[sub_resource type="StandardMaterial3D" id="Material_pistol"]
+albedo_color = Color(0.2, 0.2, 0.2, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_slide"]
+size = Vector3(0.05, 0.06, 0.15)
+
+[sub_resource type="BoxMesh" id="BoxMesh_barrel"]
+size = Vector3(0.03, 0.03, 0.08)
+
+[sub_resource type="BoxMesh" id="BoxMesh_grip"]
+size = Vector3(0.04, 0.1, 0.06)
+
+[sub_resource type="BoxMesh" id="BoxMesh_trigger_guard"]
+size = Vector3(0.02, 0.04, 0.03)
+
+[sub_resource type="BoxMesh" id="BoxMesh_trigger"]
+size = Vector3(0.015, 0.02, 0.02)
+
+[node name="Pistol" type="RigidBody3D"]
+collision_layer = 4
+collision_mask = 1
+mass = 1.0
+gravity_scale = 2.0
+script = ExtResource("1")
+weapon_type = 0
+weapon_name = "Pistol"
+is_two_handed = false
+main_grip = NodePath("MainGrip")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+shape = SubResource("BoxShape3D_pistol")
+
+[node name="Slide" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, -0.015)
+mesh = SubResource("BoxMesh_slide")
+surface_material_override/0 = SubResource("Material_pistol")
+
+[node name="Barrel" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -0.1)
+mesh = SubResource("BoxMesh_barrel")
+surface_material_override/0 = SubResource("Material_pistol")
+
+[node name="Grip" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.92388, 0.382683, 0, -0.382683, 0.92388, 0, -0.04, 0.04)
+mesh = SubResource("BoxMesh_grip")
+surface_material_override/0 = SubResource("Material_pistol")
+
+[node name="TriggerGuard" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.015, 0.01)
+mesh = SubResource("BoxMesh_trigger_guard")
+surface_material_override/0 = SubResource("Material_pistol")
+
+[node name="Trigger" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.02, 0.015)
+mesh = SubResource("BoxMesh_trigger")
+surface_material_override/0 = SubResource("Material_pistol")
+
+[node name="MainGrip" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.04, 0.04)

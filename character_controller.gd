@@ -1,0 +1,1520 @@
+extends CharacterBody3D
+class_name CharacterController
+
+# Movement
+@export var walk_speed: float = 5.0
+@export var sprint_speed: float = 8.0
+@export var crouch_speed: float = 2.5
+@export var prone_speed: float = 1.5
+@export var jump_velocity: float = 4.5
+@export var mouse_sensitivity: float = 0.003
+
+# Stance system
+enum Stance { STANDING, CROUCHING, PRONE }
+var current_stance: Stance = Stance.STANDING
+var target_stance: Stance = Stance.STANDING
+@export var stance_transition_speed: float = 8.0
+
+# Capsule dimensions for different stances
+@export var standing_height: float = 1.8
+@export var crouching_height: float = 1.0
+@export var prone_height: float = 0.5
+var capsule_shape: CapsuleShape3D
+var collision_shape: CollisionShape3D
+
+# Jump state
+var is_jumping: bool = false
+var jump_time: float = 0.0
+@export var max_jump_time: float = 0.3  # Time to blend IK during jump
+
+# Camera
+@export var fps_camera: Camera3D
+@export var tps_camera: Camera3D
+@export var camera_mode: int = 0  # 0 = FPS, 1 = TPS
+@export var max_camera_pitch_up: float = 70.0  # Maximum degrees to look up
+@export var max_camera_pitch_down: float = 80.0  # Maximum degrees to look down
+
+# Character parts
+@export var skeleton: Skeleton3D
+@export var head_bone_name: String = "characters3d.com___Head"
+@export var neck_bone_name: String = "characters3d.com___Neck"
+@export var right_hand_bone_name: String = "characters3d.com___R_Hand"
+@export var left_hand_bone_name: String = "characters3d.com___L_Hand"
+
+# Head look and free look
+@export var head_look_enabled: bool = true
+@export var max_head_rotation_x: float = 60.0  # degrees (pitch)
+@export var max_head_rotation_y: float = 70.0  # degrees (yaw before body turns)
+@export var head_rotation_speed: float = 10.0
+@export var body_rotation_speed: float = 8.0  # How fast body catches up to camera
+@export var free_look_threshold: float = 45.0  # Degrees of head turn before body follows
+
+# IK System
+@export var ik_enabled: bool = true
+@export var left_hand_ik: SkeletonIK3D
+@export var right_hand_ik: SkeletonIK3D
+@export var left_foot_ik: SkeletonIK3D
+@export var right_foot_ik: SkeletonIK3D
+
+# Ragdoll
+@export var ragdoll_enabled: bool = false
+@export var auto_create_ragdoll: bool = true  # Automatically create physical bones at runtime
+@export var debug_show_colliders: bool = true  # Show collision shapes for debugging
+
+# Weapon system
+@export var pickup_range: float = 2.0
+var equipped_weapon: Weapon = null
+var nearby_weapon: Weapon = null
+var last_nearby_weapon: Weapon = null  # Track changes for debug logging
+
+# Weapon states
+enum WeaponState { SHEATHED, READY, AIMING }
+var weapon_state: WeaponState = WeaponState.READY
+var is_weapon_sheathed: bool = false  # Toggle for sheathed state
+
+# Weapon positioning - skeleton-relative offsets
+@export var aim_weapon_offset: Vector3 = Vector3(0.0, 0.35, -0.6)  # Offset when aiming down sights (higher and more forward, centered)
+@export var ready_weapon_offset: Vector3 = Vector3(0.15, 0.1, -0.5)  # Offset when ready/moving (higher and more forward)
+@export var sheathed_weapon_offset: Vector3 = Vector3(0.5, -0.6, 0.2)  # Offset when sheathed at side
+@export var weapon_transition_speed: float = 8.0  # Speed of state transitions
+
+# Weapon sway
+@export var sway_amount: float = 0.05  # Amount of sway
+@export var sway_speed: float = 5.0  # Speed of sway oscillation
+@export var movement_sway_multiplier: float = 2.0  # Extra sway when moving
+var sway_time: float = 0.0  # Time accumulator for sway
+var current_sway: Vector3 = Vector3.ZERO  # Current sway offset
+
+# Ragdoll bone configuration - bones that will have physics
+const RAGDOLL_BONES = [
+	# Torso
+	"Hips", "Spine", "Chest", "Upper_Chest", "Neck", "Head",
+	# Left arm
+	"L_Shoulder", "L_Upper_Arm", "L_Lower_Arm", "L_Hand",
+	# Left fingers
+	"L_Thumb_Proximal", "L_Thumb_Intermediate", "L_Thumb_Distal",
+	"L_Index_Proximal", "L_Index_Intermediate", "L_Index_Distal",
+	"L_Middle_Proximal", "L_Middle_Intermediate", "L_Middle_Distal",
+	"L_Ring_Proximal", "L_Ring_Intermediate", "L_Ring_Distal",
+	"L_Little_Proximal", "L_Little_Intermediate", "L_Little_Distal",
+	# Right arm
+	"R_Shoulder", "R_Upper_Arm", "R_Lower_Arm", "R_Hand",
+	# Right fingers
+	"R_Thumb_Proximal", "R_Thumb_Intermediate", "R_Thumb_Distal",
+	"R_Index_Proximal", "R_Index_Intermediate", "R_Index_Distal",
+	"R_Middle_Proximal", "R_Middle_Intermediate", "R_Middle_Distal",
+	"R_Ring_Proximal", "R_Ring_Intermediate", "R_Ring_Distal",
+	"R_Little_Proximal", "R_Little_Intermediate", "R_Little_Distal",
+	# Legs
+	"L_Upper_Leg", "L_Lower_Leg", "L_Foot", "L_Toes",
+	"R_Upper_Leg", "R_Lower_Leg", "R_Foot", "R_Toes"
+]
+
+# Internal variables
+var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
+var camera_rotation: Vector2 = Vector2.ZERO  # Camera/head target rotation
+var body_rotation_y: float = 0.0  # Actual body Y rotation
+var head_bone_id: int = -1
+var neck_bone_id: int = -1
+var chest_bone_id: int = -1  # For weapon positioning anchor
+var right_hand_bone_id: int = -1
+var left_hand_bone_id: int = -1
+var right_hand_attachment: BoneAttachment3D = null  # For attaching weapons to hand
+var original_head_pose: Transform3D
+var original_neck_pose: Transform3D
+var mesh_instance: MeshInstance3D
+
+func _ready():
+	print("\n=== Character Controller Ready ===")
+	# Capture mouse
+	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+
+	# Find skeleton if not set
+	if not skeleton:
+		skeleton = find_skeleton(self)
+
+	if skeleton:
+		head_bone_id = skeleton.find_bone(head_bone_name)
+		neck_bone_id = skeleton.find_bone(neck_bone_name)
+		right_hand_bone_id = skeleton.find_bone(right_hand_bone_name)
+		left_hand_bone_id = skeleton.find_bone(left_hand_bone_name)
+
+		# Find chest bone for weapon positioning anchor
+		chest_bone_id = skeleton.find_bone("characters3d.com___Upper_Chest")
+		if chest_bone_id < 0:
+			chest_bone_id = skeleton.find_bone("characters3d.com___Chest")
+
+		if head_bone_id >= 0:
+			original_head_pose = skeleton.get_bone_pose(head_bone_id)
+		if neck_bone_id >= 0:
+			original_neck_pose = skeleton.get_bone_pose(neck_bone_id)
+
+		# Find mesh instance for visibility control
+		mesh_instance = find_mesh_instance(skeleton)
+
+		# Create BoneAttachment3D for right hand (for weapon attachment)
+		if right_hand_bone_id >= 0:
+			right_hand_attachment = BoneAttachment3D.new()
+			right_hand_attachment.name = "RightHandAttachment"
+			# Add to skeleton first, then set bone properties
+			skeleton.add_child(right_hand_attachment)
+			right_hand_attachment.owner = self
+			# Set bone name after adding to tree - this is important!
+			right_hand_attachment.bone_name = right_hand_bone_name
+			right_hand_attachment.bone_idx = right_hand_bone_id
+			# Ensure it follows the bone, not override it
+			right_hand_attachment.override_pose = false
+			print("Created BoneAttachment3D for right hand: ", right_hand_bone_name, " (bone_idx: ", right_hand_bone_id, ")")
+			print("  Skeleton: ", skeleton.name, ", Bone global pose: ", skeleton.get_bone_global_pose(right_hand_bone_id).origin)
+
+	# Find collision shape for stance adjustments
+	for child in get_children():
+		if child is CollisionShape3D:
+			collision_shape = child
+			if collision_shape.shape is CapsuleShape3D:
+				capsule_shape = collision_shape.shape
+				standing_height = capsule_shape.height
+				print("Found capsule shape, standing height: ", standing_height)
+			break
+
+	# Find cameras if not set (they should be children of this node)
+	if not fps_camera:
+		fps_camera = get_node_or_null("FPSCamera")
+	if not tps_camera:
+		tps_camera = get_node_or_null("TPSCamera")
+
+	# Create IK system at runtime
+	if skeleton:
+		_create_ik_system()
+
+	# Auto-create ragdoll if enabled
+	if auto_create_ragdoll and skeleton:
+		_create_ragdoll_bones()
+
+	# Set initial camera
+	_switch_camera(camera_mode)
+	print("=== End Character Controller Ready ===\n")
+
+func find_skeleton(node: Node) -> Skeleton3D:
+	if node is Skeleton3D:
+		return node
+	for child in node.get_children():
+		var result = find_skeleton(child)
+		if result:
+			return result
+	return null
+
+func find_mesh_instance(node: Node) -> MeshInstance3D:
+	if node is MeshInstance3D:
+		return node
+	for child in node.get_children():
+		var result = find_mesh_instance(child)
+		if result:
+			return result
+	return null
+
+func _create_ik_system():
+	"""Create SkeletonIK3D nodes at runtime and link them to targets"""
+	print("\n=== Creating IK System ===")
+
+	# Find IK target nodes
+	var ik_targets_node = get_node_or_null("IKTargets")
+	if not ik_targets_node:
+		print("ERROR: IKTargets node not found!")
+		return
+
+	var left_hand_target = ik_targets_node.get_node_or_null("LeftHandTarget")
+	var right_hand_target = ik_targets_node.get_node_or_null("RightHandTarget")
+	var left_foot_target = ik_targets_node.get_node_or_null("LeftFootTarget")
+	var right_foot_target = ik_targets_node.get_node_or_null("RightFootTarget")
+
+	print("Found targets - LH: ", left_hand_target, ", RH: ", right_hand_target,
+	      ", LF: ", left_foot_target, ", RF: ", right_foot_target)
+
+	# Create LeftHandIK
+	if left_hand_target:
+		left_hand_ik = SkeletonIK3D.new()
+		left_hand_ik.name = "LeftHandIK"
+		left_hand_ik.root_bone = "characters3d.com___L_Shoulder"
+		left_hand_ik.tip_bone = "characters3d.com___L_Hand"
+		left_hand_ik.interpolation = 1.0  # Instant IK solving for responsive weapon movement
+		left_hand_ik.max_iterations = 20  # More iterations for better accuracy
+		skeleton.add_child(left_hand_ik)
+		left_hand_ik.set_target_node(left_hand_target.get_path())
+		print("Created LeftHandIK")
+
+	# Create RightHandIK
+	if right_hand_target:
+		right_hand_ik = SkeletonIK3D.new()
+		right_hand_ik.name = "RightHandIK"
+		right_hand_ik.root_bone = "characters3d.com___R_Shoulder"
+		right_hand_ik.tip_bone = "characters3d.com___R_Hand"
+		right_hand_ik.interpolation = 1.0  # Instant IK solving for responsive weapon movement
+		right_hand_ik.max_iterations = 20  # More iterations for better accuracy
+		skeleton.add_child(right_hand_ik)
+		right_hand_ik.set_target_node(right_hand_target.get_path())
+		print("Created RightHandIK")
+
+	# Create LeftFootIK
+	if left_foot_target:
+		left_foot_ik = SkeletonIK3D.new()
+		left_foot_ik.name = "LeftFootIK"
+		left_foot_ik.root_bone = "characters3d.com___L_Upper_Leg"
+		left_foot_ik.tip_bone = "characters3d.com___L_Foot"
+		left_foot_ik.interpolation = 0.5
+		left_foot_ik.max_iterations = 10
+		skeleton.add_child(left_foot_ik)
+		left_foot_ik.set_target_node(left_foot_target.get_path())
+		print("Created LeftFootIK")
+
+	# Create RightFootIK
+	if right_foot_target:
+		right_foot_ik = SkeletonIK3D.new()
+		right_foot_ik.name = "RightFootIK"
+		right_foot_ik.root_bone = "characters3d.com___R_Upper_Leg"
+		right_foot_ik.tip_bone = "characters3d.com___R_Foot"
+		right_foot_ik.interpolation = 0.5
+		right_foot_ik.max_iterations = 10
+		skeleton.add_child(right_foot_ik)
+		right_foot_ik.set_target_node(right_foot_target.get_path())
+		print("Created RightFootIK")
+
+	print("=== IK System Created ===\n")
+
+func _create_ragdoll_bones():
+	print("\n=== Creating Ragdoll Bones at Runtime ===")
+
+	# RAGDOLL BEST PRACTICES IMPLEMENTED:
+	# 1. Heavy torso/head mass (10kg/5kg/3kg) acts as anchor to prevent spinning
+	# 2. HINGE joints for single-axis rotation on torso/spine/neck/head to prevent multi-axis spinning
+	# 3. HINGE joints for single-axis movement (knees, elbows, ankles, wrists)
+	# 4. Tight collision shapes (small radius) to prevent excess leverage
+	# 5. Maximum constraint enforcement (ERP=1.0, CFM=0.0) for core bones
+	# 6. High angular damping (5.0) on core bones to prevent rotation
+	# 7. Self-collision disabled between all physical bones
+	# 8. Proper collision layers: ragdoll on layer 2, world on layer 1
+
+	# Delete any existing physical bones to ensure we use latest settings
+	var existing_bones = []
+	for child in skeleton.get_children():
+		if child is PhysicalBone3D:
+			existing_bones.append(child)
+
+	if existing_bones.size() > 0:
+		print("Deleting ", existing_bones.size(), " existing physical bones to recreate with new settings...")
+		for bone in existing_bones:
+			skeleton.remove_child(bone)
+			bone.queue_free()
+
+	var bones_created = 0
+
+	# Create physical bones for ragdoll
+	for bone_suffix in RAGDOLL_BONES:
+		# Find the bone ID - try different naming conventions
+		var bone_id = -1
+		var bone_name = ""
+
+		# Try different prefixes common in character models
+		var prefixes = ["characters3d.com___", "", "mixamorig:", "Armature_"]
+		for prefix in prefixes:
+			var test_name = prefix + bone_suffix
+			bone_id = skeleton.find_bone(test_name)
+			if bone_id >= 0:
+				bone_name = test_name
+				break
+
+		if bone_id < 0:
+			print("  WARNING: Could not find bone: ", bone_suffix)
+			continue
+
+		# Create physical bone
+		var physical_bone = PhysicalBone3D.new()
+		physical_bone.name = "PhysicalBone_" + bone_suffix
+		physical_bone.bone_name = bone_name
+
+		# Get bone size to create appropriately sized collision shape
+		var bone_parent_id = skeleton.get_bone_parent(bone_id)
+		var bone_length = 0.2  # default
+
+		# Calculate bone length from rest pose if possible
+		if bone_parent_id >= 0:
+			var bone_rest = skeleton.get_bone_rest(bone_id)
+			bone_length = bone_rest.origin.length()
+			if bone_length < 0.05:
+				bone_length = 0.2
+
+		# Determine shape size based on bone type
+		var radius = 0.05
+		var height = bone_length
+
+		# Larger shapes for major bones - keep tight to prevent excess movement
+		if bone_suffix in ["Hips", "Spine", "Chest", "Upper_Chest"]:
+			radius = 0.08  # Much smaller radius for tighter control
+			height = 0.15  # Shorter segments for less leverage
+		elif "Shoulder" in bone_suffix:
+			radius = 0.05  # Very small for shoulders - they're locked anyway
+			height = 0.08
+		elif bone_suffix in ["Head"]:
+			radius = 0.15
+			height = 0.25
+		elif bone_suffix in ["Upper_Arm", "Lower_Arm", "Upper_Leg", "Lower_Leg"]:
+			radius = 0.06
+			height = max(bone_length, 0.2)
+		elif "Hand" in bone_suffix or "Foot" in bone_suffix:
+			radius = 0.05
+			height = 0.15
+		elif "Finger" in bone_suffix or "Thumb" in bone_suffix or "Index" in bone_suffix or "Middle" in bone_suffix or "Ring" in bone_suffix or "Little" in bone_suffix or "Toes" in bone_suffix:
+			radius = 0.02
+			height = 0.05
+
+		# Create collision shape
+		var shape = CapsuleShape3D.new()
+		shape.radius = radius
+		shape.height = height
+
+		# Add collision shape
+		var bone_collision_shape = CollisionShape3D.new()
+		bone_collision_shape.shape = shape
+
+		# Adjust collision shape position for specific bones
+		if bone_suffix in ["Head"]:
+			# Move head collider up slightly
+			bone_collision_shape.position = Vector3(0, 0.05, 0)
+
+		physical_bone.add_child(bone_collision_shape)
+		bone_collision_shape.owner = physical_bone
+
+		# Add debug visualization mesh
+		if debug_show_colliders:
+			var debug_mesh = MeshInstance3D.new()
+			var capsule_mesh = CapsuleMesh.new()
+			capsule_mesh.radius = radius
+			capsule_mesh.height = height
+			debug_mesh.mesh = capsule_mesh
+
+			# Create semi-transparent material for debug view
+			var debug_material = StandardMaterial3D.new()
+			debug_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+			debug_material.albedo_color = Color(0, 1, 0, 0.3)  # Green semi-transparent
+			debug_mesh.material_override = debug_material
+
+			bone_collision_shape.add_child(debug_mesh)
+			debug_mesh.owner = physical_bone
+
+		# CRITICAL: Configure joint to connect to parent bone
+		# Use HINGE for single-axis rotation to prevent unwanted multi-axis spinning
+		# HINGE joints: knees, elbows, ankles, wrists, AND torso/spine/neck/head for controlled bending
+		# Don't use NONE - it disconnects bones completely!
+		var use_hinge = bone_suffix in ["Lower_Leg", "L_Lower_Leg", "R_Lower_Leg", "Lower_Arm", "L_Lower_Arm", "R_Lower_Arm", "Foot", "L_Foot", "R_Foot", "Hand", "L_Hand", "R_Hand", "Spine", "Chest", "Upper_Chest", "Neck", "Head"]
+
+		if use_hinge:
+			physical_bone.joint_type = PhysicalBone3D.JOINT_TYPE_HINGE
+		else:
+			physical_bone.joint_type = PhysicalBone3D.JOINT_TYPE_CONE
+
+		physical_bone.joint_offset = Transform3D()  # No offset from bone
+
+		# Joint limits - EXTREMELY tight constraints, near-rigid skeleton
+		var swing_limit = deg_to_rad(5)   # Default almost rigid
+		var twist_limit = deg_to_rad(2)   # Almost no twist
+		var damping = 0.95  # Very high damping = very stiff
+		var bias = 0.95     # Very high bias = rigid response
+
+		# Ultra-specific constraints - allow natural bending but prevent excessive movement
+		# Store separate forward/backward limits for torso (for HINGE joints)
+		var forward_limit = swing_limit
+		var backward_limit = swing_limit
+
+		if bone_suffix in ["Hips"]:
+			# Hips/pelvis - very restricted backward, allow some forward bend
+			forward_limit = deg_to_rad(15)   # Can bend forward for natural posing
+			backward_limit = deg_to_rad(5)   # Very limited backward bend to prevent arching
+			swing_limit = forward_limit  # For CONE joints if used
+			twist_limit = deg_to_rad(5)  # Minimal twist
+			damping = 0.98
+			bias = 0.98
+		elif bone_suffix in ["Spine"]:
+			# Lower spine - allow forward flex, restrict backward
+			forward_limit = deg_to_rad(20)   # Can bend forward
+			backward_limit = deg_to_rad(10)  # Limited backward bend
+			swing_limit = forward_limit  # For CONE joints if used
+			twist_limit = deg_to_rad(10)  # Some twist for natural movement
+			damping = 0.95
+			bias = 0.95
+		elif bone_suffix in ["Chest", "Upper_Chest"]:
+			# Upper torso - very restricted backward
+			forward_limit = deg_to_rad(15)  # Can bend forward
+			backward_limit = deg_to_rad(5)  # Very limited backward bend
+			swing_limit = forward_limit  # For CONE joints if used
+			twist_limit = deg_to_rad(8)   # Limited twist
+			damping = 0.96
+			bias = 0.96
+		elif bone_suffix in ["Neck"]:
+			# Neck - allow natural head drooping
+			swing_limit = deg_to_rad(25)  # Can bend forward/back/side
+			twist_limit = deg_to_rad(15)  # Some twist
+			damping = 0.92
+			bias = 0.92
+		elif bone_suffix in ["Head"]:
+			# Head - more freedom for natural resting
+			swing_limit = deg_to_rad(30)  # Can loll naturally
+			twist_limit = deg_to_rad(20)  # Some rotation
+			damping = 0.90
+			bias = 0.90
+		elif "Shoulder" in bone_suffix:
+			# Shoulders - very restricted
+			swing_limit = deg_to_rad(5)   # Minimal movement
+			twist_limit = deg_to_rad(2)   # Almost no twist
+			damping = 0.98
+			bias = 0.98
+		elif bone_suffix in ["Upper_Leg", "L_Upper_Leg", "R_Upper_Leg"]:
+			# Upper legs - allow natural hip movement but keep controlled
+			swing_limit = deg_to_rad(60)   # Can swing forward/back naturally
+			twist_limit = deg_to_rad(20)   # Some twist at hip
+			damping = 0.90
+			bias = 0.90
+		elif bone_suffix in ["Lower_Leg", "L_Lower_Leg", "R_Lower_Leg"]:
+			# HINGE: Lower legs (knees) - one direction only
+			# For hinge joints, only swing matters
+			swing_limit = deg_to_rad(120)  # Can bend backward
+			twist_limit = deg_to_rad(0)    # No twist on hinge
+			damping = 0.95
+			bias = 0.95
+		elif bone_suffix in ["Foot", "L_Foot", "R_Foot"]:
+			# HINGE: Feet/ankles - VERY tight to prevent body rotation
+			swing_limit = deg_to_rad(5)  # Minimal flex only
+			twist_limit = deg_to_rad(0)  # No twist on hinge
+			damping = 1.0
+			bias = 1.0
+		elif bone_suffix in ["Toes", "L_Toes", "R_Toes"]:
+			# Toes - almost locked
+			swing_limit = deg_to_rad(1)
+			twist_limit = deg_to_rad(0.1)
+			damping = 0.998
+			bias = 0.998
+		elif bone_suffix in ["Upper_Arm", "L_Upper_Arm", "R_Upper_Arm"]:
+			# Upper arms - allow natural shoulder movement but prevent excessive backward swing
+			swing_limit = deg_to_rad(60)   # Reduced from 80 to prevent backward bending
+			twist_limit = deg_to_rad(20)   # Reduced from 30 to prevent excessive rotation
+			damping = 0.85
+			bias = 0.85
+		elif bone_suffix in ["Lower_Arm", "L_Lower_Arm", "R_Lower_Arm"]:
+			# HINGE: Lower arms (elbows) - one direction only
+			swing_limit = deg_to_rad(140)  # Can bend
+			twist_limit = deg_to_rad(0)    # No twist on hinge
+			damping = 0.95
+			bias = 0.95
+		elif bone_suffix in ["Hand", "L_Hand", "R_Hand"]:
+			# HINGE: Hands/wrists - only bend up/down realistically
+			swing_limit = deg_to_rad(70)  # Can flex at wrist
+			twist_limit = deg_to_rad(0)   # No twist on hinge
+			damping = 0.95
+			bias = 0.95
+		elif "Finger" in bone_suffix or "Thumb" in bone_suffix or "Index" in bone_suffix or "Middle" in bone_suffix or "Ring" in bone_suffix or "Little" in bone_suffix:
+			# Fingers - almost locked
+			swing_limit = deg_to_rad(2)
+			twist_limit = deg_to_rad(0.1)
+			damping = 0.998
+			bias = 0.998
+
+		# Apply limits based on joint type
+		if use_hinge:
+			# Hinge joints use different constraint properties
+			# For limbs (knees/elbows): only bend one way (forward, NOT backward/hyperextension)
+			# For torso (spine/neck/head): allow bending both ways but with asymmetric limits
+			if bone_suffix in ["Hips", "Spine", "Chest", "Upper_Chest", "Neck", "Head"]:
+				# Torso can bend forward and backward, but with separate limits
+				# Negative = backward, Positive = forward
+				physical_bone.set("joint_constraints/angular_limit_lower", -backward_limit)  # Restricted backward
+				physical_bone.set("joint_constraints/angular_limit_upper", forward_limit)    # More forward bend
+			else:
+				# Limbs only bend forward, NO backward bending (prevents hyperextension)
+				# 0 = straight/rest position, positive = bend forward, negative = hyperextend (bad!)
+				physical_bone.set("joint_constraints/angular_limit_lower", 0)  # Prevent hyperextension
+				physical_bone.set("joint_constraints/angular_limit_upper", swing_limit)  # Allow forward bend
+			physical_bone.set("joint_constraints/angular_limit_enabled", true)
+		else:
+			# Cone joints
+			physical_bone.set("joint_constraints/swing_span", swing_limit)
+			physical_bone.set("joint_constraints/twist_span", twist_limit)
+
+		# EXTREMELY stiff joints - nearly rigid skeleton
+		# For torso, upper body, and leg bones, apply maximum constraint enforcement
+		if bone_suffix in ["Hips", "Spine", "Chest", "Upper_Chest", "Neck", "Head", "Shoulder", "L_Shoulder", "R_Shoulder", "Upper_Arm", "L_Upper_Arm", "R_Upper_Arm", "Upper_Leg", "L_Upper_Leg", "R_Upper_Leg", "Foot", "L_Foot", "R_Foot"]:
+			# Maximum constraint enforcement - absolutely no give
+			physical_bone.set("joint_constraints/bias", 1.0)
+			physical_bone.set("joint_constraints/damping", 1.0)
+			physical_bone.set("joint_constraints/softness", 0.0)
+			physical_bone.set("joint_constraints/relaxation", 1.0)
+			physical_bone.set("joint_constraints/erp", 1.0)  # Error reduction parameter - maximum
+			physical_bone.set("joint_constraints/cfm", 0.0)  # Constraint force mixing - zero (rigid)
+		else:
+			# Standard stiffness for other bones
+			physical_bone.set("joint_constraints/bias", bias)
+			physical_bone.set("joint_constraints/damping", damping)
+			physical_bone.set("joint_constraints/softness", 0.0)
+			physical_bone.set("joint_constraints/relaxation", 1.0)
+
+		# Physics properties - add damping to resist all motion
+		# Make torso/head MUCH heavier to act as anchor and resist spinning
+		if bone_suffix in ["Hips", "Spine", "Chest", "Upper_Chest"]:
+			physical_bone.mass = 10.0  # Very heavy torso to prevent spinning
+		elif bone_suffix in ["Head"]:
+			physical_bone.mass = 5.0  # Heavy head to prevent spinning
+		elif bone_suffix in ["Neck"]:
+			physical_bone.mass = 3.0  # Heavy neck to prevent spinning
+		else:
+			physical_bone.mass = 1.0  # Normal mass for limbs
+
+		physical_bone.friction = 1.0  # Maximum friction
+		physical_bone.bounce = 0.0
+
+		# Apply extreme damping for upper body and legs to prevent any rotation
+		if bone_suffix in ["Hips", "Spine", "Chest", "Upper_Chest", "Neck", "Head", "Shoulder", "L_Shoulder", "R_Shoulder", "Upper_Arm", "L_Upper_Arm", "R_Upper_Arm", "Upper_Leg", "L_Upper_Leg", "R_Upper_Leg", "Foot", "L_Foot", "R_Foot"]:
+			physical_bone.linear_damp = 2.0  # Extreme resistance to movement
+			physical_bone.angular_damp = 5.0  # Extreme resistance to rotation (prevents spinning)
+		else:
+			physical_bone.linear_damp = 0.8  # Strong resistance to linear movement
+			physical_bone.angular_damp = 0.99  # Extremely heavy resistance to rotation
+
+		# No axis locks needed - joint limits and damping provide control
+
+		# CRITICAL: Set collision layers and masks for proper physics
+		physical_bone.collision_layer = 2  # Layer 2 for ragdoll parts
+		physical_bone.collision_mask = 1   # Collide with layer 1 (world/ground)
+
+		# Add to skeleton
+		skeleton.add_child(physical_bone)
+		physical_bone.owner = get_tree().edited_scene_root if Engine.is_editor_hint() else self
+
+		bones_created += 1
+		# Removed verbose logging for each bone
+
+	# Set up collision exceptions between all physical bones (prevent self-collision)
+	var all_physical_bones = []
+	for child in skeleton.get_children():
+		if child is PhysicalBone3D:
+			all_physical_bones.append(child)
+
+	for i in range(all_physical_bones.size()):
+		for j in range(i + 1, all_physical_bones.size()):
+			all_physical_bones[i].add_collision_exception_with(all_physical_bones[j])
+
+	print("Created ", bones_created, " ragdoll bones")
+
+func _input(event):
+	if event is InputEventMouseMotion and Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED:
+		camera_rotation.x -= event.relative.y * mouse_sensitivity
+		camera_rotation.y -= event.relative.x * mouse_sensitivity
+		# Clamp pitch (x rotation) with configurable limits
+		camera_rotation.x = clamp(camera_rotation.x, deg_to_rad(-max_camera_pitch_up), deg_to_rad(max_camera_pitch_down))
+
+	if event.is_action_pressed("toggle_camera"):
+		print("\n=== TOGGLE CAMERA PRESSED ===")
+		print("Current camera_mode: ", camera_mode)
+		camera_mode = (camera_mode + 1) % 2
+		print("New camera_mode: ", camera_mode)
+		_switch_camera(camera_mode)
+		print("Camera mode: ", "FPS" if camera_mode == 0 else "TPS")
+		print("=== END TOGGLE ===\n")
+
+	if event.is_action_pressed("toggle_ik"):
+		print("\n=== TOGGLE IK PRESSED ===")
+		ik_enabled = !ik_enabled
+		print("IK enabled: ", ik_enabled)
+		print("Left hand IK: ", left_hand_ik)
+		print("Right hand IK: ", right_hand_ik)
+		print("Left foot IK: ", left_foot_ik)
+		print("Right foot IK: ", right_foot_ik)
+		print("=== END IK TOGGLE ===\n")
+
+	if event.is_action_pressed("toggle_ragdoll"):
+		toggle_ragdoll()
+
+	# E key for weapon pickup/drop
+	if event is InputEventKey and event.pressed and event.keycode == KEY_E:
+		print("E key pressed - equipped_weapon: ", equipped_weapon, ", nearby_weapon: ", nearby_weapon)
+		if equipped_weapon:
+			drop_weapon()
+		elif nearby_weapon:
+			pickup_weapon(nearby_weapon)
+
+	# Left click for shooting
+	if event is InputEventMouseButton:
+		if event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+			if equipped_weapon:
+				_shoot_weapon()
+
+	# Right click for weapon aim
+	if event is InputEventMouseButton:
+		if event.button_index == MOUSE_BUTTON_RIGHT:
+			if event.pressed and equipped_weapon and not is_weapon_sheathed:
+				weapon_state = WeaponState.AIMING
+			else:
+				# Return to ready or sheathed based on sheathed flag
+				weapon_state = WeaponState.SHEATHED if is_weapon_sheathed else WeaponState.READY
+
+	# H key to toggle weapon sheathed/ready
+	if event is InputEventKey and event.pressed and event.keycode == KEY_H:
+		if equipped_weapon:
+			is_weapon_sheathed = !is_weapon_sheathed
+			weapon_state = WeaponState.SHEATHED if is_weapon_sheathed else WeaponState.READY
+			print("Weapon ", "sheathed" if is_weapon_sheathed else "ready")
+
+	if event.is_action_pressed("ui_cancel"):
+		if Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED:
+			Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+		else:
+			Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+
+func _switch_camera(mode: int):
+	print("\n=== _switch_camera called ===")
+	print("Mode: ", mode, " (", "FPS" if mode == 0 else "TPS", ")")
+	print("fps_camera exists: ", fps_camera != null)
+	print("tps_camera exists: ", tps_camera != null)
+
+	if fps_camera and tps_camera:
+		if mode == 0:  # FPS
+			print("Setting FPS camera as current")
+			fps_camera.current = true
+			tps_camera.current = false
+			# Use camera cull mask to hide character body in FPS
+			# Layer 1 = default, Layer 2 = character body
+			if mesh_instance:
+				# Move mesh to layer 2
+				mesh_instance.layers = 2
+				print("Mesh moved to layer 2")
+			# FPS camera only sees layer 1 (not character body)
+			fps_camera.cull_mask = 1
+		else:  # TPS
+			print("Setting TPS camera as current")
+			fps_camera.current = false
+			tps_camera.current = true
+			if mesh_instance:
+				# Move mesh back to layer 1
+				mesh_instance.layers = 1
+				print("Mesh moved to layer 1")
+			# TPS camera sees all layers
+			tps_camera.cull_mask = 0xFFFFF
+	else:
+		print("ERROR: One or both cameras are null!")
+		print("fps_camera: ", fps_camera)
+		print("tps_camera: ", tps_camera)
+	print("=== End _switch_camera ===\n")
+
+func _handle_stance_input():
+	"""Handle stance change inputs"""
+	# Toggle crouch with C key
+	if Input.is_action_just_pressed("ui_page_down"):  # C key (will map in project settings)
+		if current_stance == Stance.STANDING:
+			target_stance = Stance.CROUCHING
+		elif current_stance == Stance.CROUCHING:
+			target_stance = Stance.STANDING
+
+	# Toggle prone with Z key
+	if Input.is_action_just_pressed("ui_end"):  # Z key (will map in project settings)
+		if current_stance == Stance.STANDING or current_stance == Stance.CROUCHING:
+			target_stance = Stance.PRONE
+		elif current_stance == Stance.PRONE:
+			target_stance = Stance.STANDING
+
+func _update_stance(delta):
+	"""Update current stance with smooth transitions"""
+	if not capsule_shape or not collision_shape:
+		return
+
+	# Transition stance
+	if current_stance != target_stance:
+		current_stance = target_stance
+
+	# Get target height and rotation based on stance
+	var target_height = standing_height
+	var target_pitch = 0.0  # Character pitch rotation (for prone)
+
+	match current_stance:
+		Stance.STANDING:
+			target_height = standing_height
+			target_pitch = 0.0
+		Stance.CROUCHING:
+			target_height = crouching_height
+			target_pitch = 0.0
+		Stance.PRONE:
+			target_height = prone_height
+			target_pitch = deg_to_rad(85)  # Almost horizontal
+
+	# Smoothly interpolate capsule height
+	capsule_shape.height = lerp(capsule_shape.height, target_height, stance_transition_speed * delta)
+
+	# Smoothly interpolate character pitch for prone
+	var current_pitch = rotation.x
+	rotation.x = lerp_angle(current_pitch, target_pitch, stance_transition_speed * delta)
+
+	# Adjust collision shape position (capsule center moves down when shorter)
+	var height_diff = standing_height - capsule_shape.height
+	collision_shape.position.y = (standing_height / 2.0) - (height_diff / 2.0)
+
+	# Update IK targets based on stance
+	_update_ik_for_stance(delta)
+
+func _update_ik_for_stance(delta):
+	"""Adjust IK target positions based on current stance and jump state"""
+	if not ik_enabled:
+		return
+
+	var ik_targets_node = get_node_or_null("IKTargets")
+	if not ik_targets_node:
+		return
+
+	var left_foot_target = ik_targets_node.get_node_or_null("LeftFootTarget")
+	var right_foot_target = ik_targets_node.get_node_or_null("RightFootTarget")
+	var left_hand_target = ik_targets_node.get_node_or_null("LeftHandTarget")
+	var right_hand_target = ik_targets_node.get_node_or_null("RightHandTarget")
+
+	# Adjust feet based on stance and jump
+	if left_foot_target and right_foot_target and skeleton:
+		var base_foot_height = -0.9  # Default standing foot position
+
+		if is_jumping:
+			# During jump, bring feet up
+			var jump_blend = min(jump_time / max_jump_time, 1.0)
+			base_foot_height = lerp(-0.9, -0.3, jump_blend)  # Feet come up during jump
+		else:
+			# Adjust feet based on stance
+			match current_stance:
+				Stance.STANDING:
+					base_foot_height = -0.9
+				Stance.CROUCHING:
+					base_foot_height = -0.5  # Feet closer to body when crouching
+				Stance.PRONE:
+					base_foot_height = 0.0  # Feet level with body when prone
+
+		# Set foot positions (local to character)
+		left_foot_target.position.y = lerp(left_foot_target.position.y, base_foot_height, stance_transition_speed * delta)
+		right_foot_target.position.y = lerp(right_foot_target.position.y, base_foot_height, stance_transition_speed * delta)
+
+	# Adjust hands based on stance (when not holding weapon)
+	if not equipped_weapon and left_hand_target and right_hand_target:
+		var hand_height = 0.3  # Default hand position
+
+		match current_stance:
+			Stance.STANDING:
+				hand_height = 0.3
+			Stance.CROUCHING:
+				hand_height = 0.1  # Hands lower when crouching
+			Stance.PRONE:
+				hand_height = -0.2  # Hands supporting body when prone
+
+		left_hand_target.position.y = lerp(left_hand_target.position.y, hand_height, stance_transition_speed * delta)
+		right_hand_target.position.y = lerp(right_hand_target.position.y, hand_height, stance_transition_speed * delta)
+
+func _physics_process(delta):
+	if ragdoll_enabled:
+		return
+
+	# Handle stance changes
+	_handle_stance_input()
+	_update_stance(delta)
+
+	# Apply gravity
+	if not is_on_floor():
+		velocity.y -= gravity * delta
+	else:
+		# Reset jump state when landing
+		if is_jumping:
+			is_jumping = false
+			jump_time = 0.0
+
+	# Handle jump - only when standing or crouching
+	if Input.is_action_just_pressed("jump") and is_on_floor():
+		if current_stance != Stance.PRONE:
+			velocity.y = jump_velocity
+			is_jumping = true
+			jump_time = 0.0
+
+	# Update jump time for IK blending
+	if is_jumping:
+		jump_time += delta
+
+	# Get input direction
+	var input_dir = Input.get_vector("move_left", "move_right", "move_forward", "move_back")
+
+	# Update body rotation - smoothly follow camera or snap when moving
+	var head_yaw_difference = angle_difference(body_rotation_y, camera_rotation.y)
+
+	# If moving, body faces movement direction immediately
+	# If standing still, body turns when head exceeds threshold
+	if input_dir.length() > 0.1:
+		# When moving, body follows camera direction
+		body_rotation_y = lerp_angle(body_rotation_y, camera_rotation.y, body_rotation_speed * delta)
+	else:
+		# When standing still, only turn body if head turned too far
+		if abs(head_yaw_difference) > deg_to_rad(free_look_threshold):
+			body_rotation_y = lerp_angle(body_rotation_y, camera_rotation.y, body_rotation_speed * delta * 0.5)
+
+	# Apply body rotation
+	rotation.y = body_rotation_y
+
+	# Calculate movement direction based on body rotation
+	var direction = Vector3.ZERO
+	if input_dir.length() > 0.1:
+		direction = (transform.basis * Vector3(input_dir.x, 0, input_dir.y)).normalized()
+
+	# Apply movement - speed depends on stance
+	var current_speed = walk_speed
+	match current_stance:
+		Stance.STANDING:
+			current_speed = sprint_speed if Input.is_action_pressed("sprint") else walk_speed
+		Stance.CROUCHING:
+			current_speed = crouch_speed
+		Stance.PRONE:
+			current_speed = prone_speed
+
+	if direction:
+		velocity.x = direction.x * current_speed
+		velocity.z = direction.z * current_speed
+	else:
+		velocity.x = move_toward(velocity.x, 0, current_speed)
+		velocity.z = move_toward(velocity.z, 0, current_speed)
+
+	move_and_slide()
+
+	# Update head rotation for aiming
+	if head_look_enabled and skeleton and head_bone_id >= 0:
+		_update_head_look(delta)
+
+	# Detect nearby weapons for pickup
+	_detect_nearby_weapon()
+
+func _update_head_look(delta):
+	# Calculate head rotation relative to body
+	var head_yaw_offset = angle_difference(body_rotation_y, camera_rotation.y)
+
+	# Clamp head rotations to limits
+	var head_pitch = clamp(camera_rotation.x,
+		deg_to_rad(-max_head_rotation_x),
+		deg_to_rad(max_head_rotation_x))
+
+	var head_yaw = clamp(head_yaw_offset,
+		deg_to_rad(-max_head_rotation_y),
+		deg_to_rad(max_head_rotation_y))
+
+	# Apply rotation to neck (contributes to yaw and some pitch)
+	if neck_bone_id >= 0:
+		var neck_pose = skeleton.get_bone_pose(neck_bone_id)
+		var neck_target = Basis()
+		# Neck contributes 40% of the yaw rotation
+		neck_target = neck_target.rotated(Vector3.UP, head_yaw * 0.4)
+		# Neck contributes 30% of pitch (negated due to 180° model rotation)
+		neck_target = neck_target.rotated(neck_target.x, -head_pitch * 0.3)
+		neck_target = neck_target * original_neck_pose.basis
+
+		neck_pose.basis = neck_pose.basis.slerp(neck_target, head_rotation_speed * delta)
+		skeleton.set_bone_pose(neck_bone_id, neck_pose)
+
+	# Apply rotation to head (remaining rotation)
+	var head_pose = skeleton.get_bone_pose(head_bone_id)
+	var head_target = Basis()
+	# Head contributes 60% of yaw rotation
+	head_target = head_target.rotated(Vector3.UP, head_yaw * 0.6)
+	# Head contributes 70% of pitch (negated due to 180° model rotation)
+	head_target = head_target.rotated(head_target.x, -head_pitch * 0.7)
+	head_target = head_target * original_head_pose.basis
+
+	head_pose.basis = head_pose.basis.slerp(head_target, head_rotation_speed * delta)
+	skeleton.set_bone_pose(head_bone_id, head_pose)
+
+func toggle_ragdoll():
+	print("=== Ragdoll Toggle Debug ===")
+
+	if not skeleton:
+		print("ERROR: No skeleton found!")
+		return
+
+	# Count physical bones
+	var physical_bones = []
+	for child in skeleton.get_children():
+		if child is PhysicalBone3D:
+			physical_bones.append(child)
+
+	print("Found ", physical_bones.size(), " physical bones")
+
+	if physical_bones.size() == 0:
+		print("ERROR: No PhysicalBone3D nodes found!")
+		print("Please run setup_physical_bones.gd editor script to create physical bones.")
+		print("Or use Skeleton3D -> Create Physical Skeleton in the editor")
+		ragdoll_enabled = false
+		return
+
+	ragdoll_enabled = !ragdoll_enabled
+
+	if ragdoll_enabled:
+		print("ENABLING RAGDOLL - Starting physics simulation")
+		# Use skeleton's built-in ragdoll methods (no PhysicalBoneSimulator3D needed)
+		skeleton.physical_bones_start_simulation()
+		# Disable character collision and control
+		collision_layer = 0
+		collision_mask = 0
+		set_physics_process(false)
+
+		# Make mesh visible on all layers for ragdoll (so it's visible in FPS mode too)
+		if mesh_instance:
+			mesh_instance.layers = 1
+			print("Mesh made visible for ragdoll")
+
+		# Attach weapon to physical hand bone if equipped
+		if equipped_weapon:
+			_attach_weapon_to_ragdoll_hand()
+
+		# Attach FPS camera to physical head bone
+		_attach_camera_to_ragdoll_head()
+	else:
+		print("DISABLING RAGDOLL - Stopping physics simulation")
+		skeleton.physical_bones_stop_simulation()
+		collision_layer = 1
+		collision_mask = 1
+		set_physics_process(true)
+
+		# Restore mesh visibility based on camera mode
+		if mesh_instance:
+			if camera_mode == 0:  # FPS mode
+				mesh_instance.layers = 2  # Hide from FPS camera
+			else:  # TPS mode
+				mesh_instance.layers = 1  # Visible
+			print("Mesh visibility restored based on camera mode")
+
+		# Restore weapon to normal attachment if equipped
+		if equipped_weapon:
+			_detach_weapon_from_ragdoll_hand()
+
+		# Restore FPS camera to character
+		_detach_camera_from_ragdoll_head()
+
+	print("Ragdoll enabled: ", ragdoll_enabled)
+
+func _attach_weapon_to_ragdoll_hand():
+	"""Attach weapon to physical hand bone during ragdoll"""
+	if not equipped_weapon or not skeleton:
+		return
+
+	# Find the physical bone for the right hand
+	var hand_bone_name = skeleton.get_bone_name(right_hand_bone_id)
+	var physical_hand_bone = null
+
+	for child in skeleton.get_children():
+		if child is PhysicalBone3D and child.bone_name == hand_bone_name:
+			physical_hand_bone = child
+			break
+
+	if not physical_hand_bone:
+		print("WARNING: Could not find physical bone for right hand")
+		return
+
+	print("Attaching weapon to ragdoll hand: ", physical_hand_bone.name)
+
+	# Remove weapon from character (BoneAttachment3D)
+	if equipped_weapon.get_parent():
+		equipped_weapon.get_parent().remove_child(equipped_weapon)
+
+	# Add weapon as child of physical hand bone
+	physical_hand_bone.add_child(equipped_weapon)
+
+	# Position weapon relative to hand bone (using grip alignment)
+	if equipped_weapon.main_grip:
+		var grip_local_pos = equipped_weapon.main_grip.position
+		# Apply rotation offset for proper weapon orientation
+		var rotation_offset = Basis().rotated(Vector3.RIGHT, deg_to_rad(-90))
+		equipped_weapon.transform.basis = rotation_offset
+		# Position so grip aligns with hand bone origin
+		var grip_offset_rotated = equipped_weapon.transform.basis * grip_local_pos
+		equipped_weapon.position = -grip_offset_rotated
+
+		# Add weapon-specific offset (same as normal equip)
+		# In local space: X- = left, Z+ = forward
+		var weapon_offset = Vector3.ZERO
+		if equipped_weapon.weapon_type == Weapon.WeaponType.PISTOL:
+			weapon_offset = Vector3(-0.03, 0.0, 0.08)  # 3cm left, 8cm forward
+		elif equipped_weapon.weapon_type == Weapon.WeaponType.RIFLE:
+			weapon_offset = Vector3(-0.02, 0.0, 0.12)  # 2cm left, 12cm forward
+		equipped_weapon.position += weapon_offset
+	else:
+		equipped_weapon.position = Vector3(-0.03, 0.0, 0.08)  # Default pistol offset (forward and left)
+		equipped_weapon.rotation = Vector3.ZERO
+
+	# Enable weapon ragdoll mode - stays in hand until collision
+	equipped_weapon.enter_ragdoll_mode()
+
+	print("Weapon attached to ragdoll hand and will drop on collision")
+
+func _detach_weapon_from_ragdoll_hand():
+	"""Restore weapon to normal attachment after ragdoll"""
+	if not equipped_weapon:
+		return
+
+	# Check if weapon was dropped during ragdoll
+	if not equipped_weapon.is_equipped:
+		print("Weapon was dropped during ragdoll, not restoring")
+		equipped_weapon = null
+		return
+
+	print("Detaching weapon from ragdoll hand")
+
+	# Exit weapon ragdoll mode
+	equipped_weapon.exit_ragdoll_mode()
+
+	# Remove from physical bone
+	if equipped_weapon.get_parent():
+		equipped_weapon.get_parent().remove_child(equipped_weapon)
+
+	# Re-add to hand attachment (BoneAttachment3D)
+	if right_hand_attachment:
+		right_hand_attachment.add_child(equipped_weapon)
+
+		# Restore grip-aligned transform
+		if equipped_weapon.main_grip:
+			var grip_local_pos = equipped_weapon.main_grip.position
+			var rotation_offset = Basis().rotated(Vector3.RIGHT, deg_to_rad(-90))
+			equipped_weapon.transform.basis = rotation_offset
+			var grip_offset_rotated = equipped_weapon.transform.basis * grip_local_pos
+			equipped_weapon.transform.origin = -grip_offset_rotated
+
+			# Apply weapon-specific offset
+			# In local space: X- = left, Z+ = forward
+			var weapon_offset = Vector3.ZERO
+			if equipped_weapon.weapon_type == Weapon.WeaponType.PISTOL:
+				weapon_offset = Vector3(-0.03, 0.0, 0.08)  # 3cm left, 8cm forward
+			elif equipped_weapon.weapon_type == Weapon.WeaponType.RIFLE:
+				weapon_offset = Vector3(-0.02, 0.0, 0.12)  # 2cm left, 12cm forward
+			equipped_weapon.transform.origin += weapon_offset
+		else:
+			equipped_weapon.transform.origin = Vector3(-0.03, 0.0, 0.08)  # Default pistol offset (forward and left)
+			equipped_weapon.transform.basis = Basis().rotated(Vector3.RIGHT, deg_to_rad(-90))
+
+	print("Weapon restored to normal attachment")
+
+func _attach_camera_to_ragdoll_head():
+	"""Attach FPS camera to physical head bone during ragdoll"""
+	if not fps_camera or not skeleton or head_bone_id < 0:
+		return
+
+	# Find the physical bone for the head
+	var bone_name = skeleton.get_bone_name(head_bone_id)
+	var physical_head_bone = null
+
+	for child in skeleton.get_children():
+		if child is PhysicalBone3D and child.bone_name == bone_name:
+			physical_head_bone = child
+			break
+
+	if not physical_head_bone:
+		print("WARNING: Could not find physical bone for head")
+		return
+
+	print("Attaching FPS camera to ragdoll head: ", physical_head_bone.name)
+
+	# Store camera's current rotation to preserve it
+	var camera_global_basis = fps_camera.global_transform.basis
+
+	# Remove camera from character
+	if fps_camera.get_parent():
+		fps_camera.get_parent().remove_child(fps_camera)
+
+	# Add camera as child of physical head bone
+	physical_head_bone.add_child(fps_camera)
+
+	# Set camera position at eye level but preserve current rotation
+	fps_camera.position = Vector3(0, 0.1, 0.15)  # Eye offset
+	# Preserve the camera's rotation by converting global basis to local relative to head bone
+	fps_camera.global_transform.basis = camera_global_basis
+
+	print("FPS camera attached to ragdoll head")
+
+func _detach_camera_from_ragdoll_head():
+	"""Restore FPS camera to character after ragdoll"""
+	if not fps_camera:
+		return
+
+	print("Detaching FPS camera from ragdoll head")
+
+	# Remove from physical bone
+	if fps_camera.get_parent():
+		fps_camera.get_parent().remove_child(fps_camera)
+
+	# Re-add to character
+	add_child(fps_camera)
+
+	# Restore normal camera position
+	fps_camera.position = Vector3(0, 1.6, 0)
+	fps_camera.rotation = Vector3.ZERO
+
+	print("FPS camera restored to character")
+
+func _detect_nearby_weapon():
+	"""Detect weapons within pickup range"""
+	nearby_weapon = null
+
+	# Find all weapons in the scene
+	var weapons = get_tree().get_nodes_in_group("weapons")
+
+	if weapons.is_empty():
+		# If no weapons in group, search for Weapon nodes
+		weapons = []
+		_find_weapons_recursive(get_tree().root, weapons)
+
+	# Find closest weapon within range
+	var closest_distance = pickup_range
+	for weapon in weapons:
+		if weapon is Weapon and not weapon.is_equipped:
+			var distance = global_position.distance_to(weapon.global_position)
+			if distance < closest_distance:
+				nearby_weapon = weapon
+				closest_distance = distance
+
+	# Only log when nearby weapon changes
+	if nearby_weapon != last_nearby_weapon:
+		# Removed spam - users can see weapon highlight instead
+		last_nearby_weapon = nearby_weapon
+
+
+func _find_weapons_recursive(node: Node, weapons: Array):
+	"""Recursively find all Weapon nodes"""
+	if node is Weapon:
+		weapons.append(node)
+	for child in node.get_children():
+		_find_weapons_recursive(child, weapons)
+
+func pickup_weapon(weapon: Weapon):
+	"""Pick up a weapon"""
+	if not weapon or weapon.is_equipped:
+		return
+
+	# Equip the weapon - parent to right hand attachment so it follows IK automatically
+	if weapon.equip(self, right_hand_attachment):
+		equipped_weapon = weapon
+		nearby_weapon = null
+
+		# Debug: Verify weapon attachment
+		print("DEBUG: Weapon equipped!")
+		print("  BoneAttachment position: ", right_hand_attachment.global_position if right_hand_attachment else "NULL")
+		print("  Weapon parent: ", equipped_weapon.get_parent().name if equipped_weapon.get_parent() else "NULL")
+		print("  Weapon global position: ", equipped_weapon.global_position)
+		print("  Weapon local position: ", equipped_weapon.position)
+		if skeleton and right_hand_bone_id >= 0:
+			var hand_bone_global = skeleton.global_transform * skeleton.get_bone_global_pose(right_hand_bone_id)
+			print("  Hand bone global position: ", hand_bone_global.origin)
+
+		# Weapon is now parented to hand bone and will automatically follow IK transforms
+
+func _shoot_weapon():
+	"""Shoot the currently equipped weapon"""
+	if not equipped_weapon:
+		return
+
+	# Get shoot direction from camera
+	var camera = fps_camera if camera_mode == 0 else tps_camera
+	if not camera:
+		return
+
+	var shoot_direction = -camera.global_transform.basis.z  # Forward direction
+
+	# Shoot from camera position
+	var shoot_from = camera.global_position
+
+	# Call weapon shoot function
+	var hit_result = equipped_weapon.shoot(shoot_from, shoot_direction)
+
+	# Handle hit result
+	if hit_result.hit:
+		var hit_node = hit_result.collider
+
+		# Check if we hit a character with a skeleton (for partial ragdoll)
+		if hit_node is PhysicalBone3D:
+			var target_character = _find_parent_character(hit_node)
+			if target_character and target_character != self:
+				# Apply partial ragdoll to the hit bone
+				target_character._apply_partial_ragdoll(hit_result.bone_name, hit_result.direction * hit_result.knockback_force)
+
+func _find_parent_character(node: Node) -> Node:
+	"""Find the parent CharacterController if it exists"""
+	var current = node.get_parent()
+	while current:
+		if current is CharacterController:
+			return current
+		current = current.get_parent()
+	return null
+
+func _apply_partial_ragdoll(bone_name: String, impulse: Vector3):
+	"""Apply partial ragdoll effect to a specific bone"""
+	if not skeleton:
+		return
+
+	print("Applying partial ragdoll to bone: ", bone_name, " with impulse: ", impulse)
+
+	# Find the physical bone
+	var physical_bone: PhysicalBone3D = null
+	for child in skeleton.get_children():
+		if child is PhysicalBone3D and child.bone_name == bone_name:
+			physical_bone = child
+			break
+
+	if not physical_bone:
+		print("  Physical bone not found!")
+		return
+
+	# Enable physics simulation on this bone temporarily
+	physical_bone.set_simulate_physics(true)
+
+	# Apply impulse
+	physical_bone.apply_central_impulse(impulse)
+
+	# Schedule recovery (return to normal after delay)
+	var recover_timer = get_tree().create_timer(1.5)
+	recover_timer.timeout.connect(func(): _recover_bone(physical_bone))
+
+	print("  Partial ragdoll applied, will recover in 1.5s")
+
+func _recover_bone(physical_bone: PhysicalBone3D):
+	"""Recover a bone from ragdoll state"""
+	if physical_bone and is_instance_valid(physical_bone):
+		physical_bone.set_simulate_physics(false)
+		print("Recovered bone: ", physical_bone.bone_name)
+
+func drop_weapon():
+	"""Drop the currently equipped weapon"""
+	if not equipped_weapon:
+		return
+
+	# Restore IK targets to default positions
+	var ik_targets_node = get_node_or_null("IKTargets")
+	if ik_targets_node:
+		# Reset left hand to default
+		var left_hand_target = ik_targets_node.get_node_or_null("LeftHandTarget")
+		if left_hand_target:
+			left_hand_target.global_position = global_position + Vector3(-0.5, 1.2, 0.3)
+
+		# Reset right hand to default
+		var right_hand_target = ik_targets_node.get_node_or_null("RightHandTarget")
+		if right_hand_target:
+			right_hand_target.global_position = global_position + Vector3(0.5, 1.2, 0.3)
+
+	equipped_weapon.unequip()
+	equipped_weapon = null
+
+func _calculate_weapon_sway(delta: float, is_moving: bool) -> Vector3:
+	"""Calculate procedural weapon sway based on movement and time"""
+	sway_time += delta * sway_speed
+
+	# Base sway using sine waves for smooth oscillation
+	var sway_x = sin(sway_time) * sway_amount
+	var sway_y = cos(sway_time * 0.8) * sway_amount * 0.5
+
+	# Extra sway when moving
+	if is_moving:
+		sway_x *= movement_sway_multiplier
+		sway_y *= movement_sway_multiplier
+		# Add bob effect when moving
+		sway_y += sin(sway_time * 2.0) * sway_amount * movement_sway_multiplier * 0.3
+
+	# Reduce sway when aiming
+	if weapon_state == WeaponState.AIMING:
+		sway_x *= 0.3
+		sway_y *= 0.3
+
+	return Vector3(sway_x, sway_y, 0)
+
+func _update_weapon_ik_targets():
+	"""Set IK target positions for weapon holding (called BEFORE IK is applied)"""
+	if not equipped_weapon or not skeleton or right_hand_bone_id < 0:
+		return
+
+	var ik_targets_node = get_node_or_null("IKTargets")
+	if not ik_targets_node:
+		return
+
+	# Get camera rotation for IK target positioning
+	var active_camera = fps_camera if camera_mode == 0 else tps_camera
+	if not active_camera:
+		return
+
+	# Check if character is moving for sway calculation
+	var is_moving = velocity.length() > 0.1
+	current_sway = _calculate_weapon_sway(get_process_delta_time(), is_moving)
+
+	# Determine IK target offset based on weapon state
+	var target_offset = ready_weapon_offset
+	match weapon_state:
+		WeaponState.SHEATHED:
+			target_offset = sheathed_weapon_offset
+			current_sway *= 0.2  # Reduce sway when sheathed
+		WeaponState.READY:
+			target_offset = ready_weapon_offset
+		WeaponState.AIMING:
+			target_offset = aim_weapon_offset
+
+	# Position right hand IK target relative to BODY (chest bone), not camera
+	var right_hand_target = ik_targets_node.get_node_or_null("RightHandTarget")
+	if right_hand_target:
+		var base_offset = target_offset + current_sway
+
+		# When weapon is equipped, hand should only move UP/DOWN, not LEFT/RIGHT
+		# This keeps the weapon centered in front of the body
+		if weapon_state == WeaponState.AIMING or weapon_state == WeaponState.READY:
+			base_offset.x = 0.0  # No left/right movement when aiming or ready
+
+		# Use chest bone as anchor point for body-relative positioning
+		var anchor_transform: Transform3D
+		if chest_bone_id >= 0:
+			anchor_transform = skeleton.global_transform * skeleton.get_bone_global_pose(chest_bone_id)
+		else:
+			# Fallback to character position if no chest bone
+			anchor_transform = global_transform
+
+		# Position hand relative to body/chest using CHARACTER'S facing direction
+		# Use body_rotation_y (where character faces) not camera_rotation.y (where camera looks)
+		# This prevents hand from moving left/right when camera orbits in TPS
+		var body_basis = Basis(Vector3.UP, body_rotation_y)  # Character's facing, not camera
+		var target_pos = anchor_transform.origin + body_basis * base_offset
+
+		# DEBUG: Track target movement when state changes
+		if weapon_state == WeaponState.AIMING and right_hand_target.global_position.distance_to(target_pos) > 0.01:
+			print("AIMING: Moving hand target from ", right_hand_target.global_position, " to ", target_pos)
+
+		right_hand_target.global_position = target_pos
+
+	# Update left hand IK target ONLY for two-handed weapons (rifles)
+	var left_hand_target = ik_targets_node.get_node_or_null("LeftHandTarget")
+	if left_hand_target:
+		if equipped_weapon.is_two_handed:
+			# Two-handed weapon (rifle/assault rifle): Position left hand for foregrip
+			# Left hand should be higher and further forward than right hand
+			if equipped_weapon.secondary_grip:
+				# If weapon has a secondary grip node, use it as base
+				left_hand_target.global_position = equipped_weapon.secondary_grip.global_position
+			else:
+				# No secondary grip - calculate position relative to right hand
+				# Position left hand forward and slightly up from right hand
+				var body_basis = Basis(Vector3.UP, body_rotation_y)
+
+				# Start from right hand target position
+				var right_hand_pos: Vector3 = right_hand_target.global_position if right_hand_target else global_position
+
+				# Offset for assault rifle foregrip:
+				# - Forward (along weapon barrel): 0.35m in front of right hand
+				# - Up: 0.05m higher than right hand
+				# - No left/right offset (centerline)
+				var foregrip_offset = Vector3(0.0, 0.05, -0.35)  # Higher and forward
+
+				# Apply body-relative offset
+				var left_hand_pos = right_hand_pos + body_basis * foregrip_offset
+				left_hand_target.global_position = left_hand_pos
+		else:
+			# Pistol: disable left hand IK by moving target to default position
+			# This allows left hand to use idle animation instead
+			var l_hand_id = skeleton.find_bone("characters3d.com___L_Hand")
+			if l_hand_id >= 0:
+				var left_hand_rest = skeleton.global_transform * skeleton.get_bone_rest(l_hand_id).origin
+				left_hand_target.global_position = left_hand_rest
+
+func _update_weapon_to_hand():
+	"""Position weapon to follow IK-transformed hand bone (called AFTER IK is applied)"""
+	if not equipped_weapon:
+		print("DEBUG: _update_weapon_to_hand() - no equipped_weapon")
+		return
+	if not skeleton:
+		print("DEBUG: _update_weapon_to_hand() - no skeleton")
+		return
+	if right_hand_bone_id < 0:
+		print("DEBUG: _update_weapon_to_hand() - invalid right_hand_bone_id: ", right_hand_bone_id)
+		return
+
+	# Get the IK-transformed hand bone transform
+	var right_hand_transform = skeleton.global_transform * skeleton.get_bone_global_pose(right_hand_bone_id)
+	print("DEBUG: _update_weapon_to_hand() - hand transform: ", right_hand_transform.origin)
+
+	# STEP 1: Position weapon so grip point aligns with hand bone origin
+	# This must be done FIRST, before applying any rotation offsets
+	if equipped_weapon.main_grip:
+		# Calculate where weapon should be placed so grip aligns with hand
+		var grip_local_pos = equipped_weapon.main_grip.position
+
+		# First, match hand rotation directly (no offset yet)
+		equipped_weapon.global_transform.basis = right_hand_transform.basis
+
+		# Calculate grip offset in world space
+		var grip_world_offset = equipped_weapon.global_transform.basis * grip_local_pos
+
+		# Position weapon so grip point is at hand bone origin
+		equipped_weapon.global_position = right_hand_transform.origin - grip_world_offset
+
+		# STEP 2: Apply weapon-specific rotation offset AFTER positioning
+		# This rotates the weapon around the grip point (hand bone origin)
+		# Adjust these values to orient the weapon correctly in hand
+		var rotation_offset = Basis()
+		rotation_offset = rotation_offset.rotated(Vector3.RIGHT, deg_to_rad(-90))  # Pitch
+		# Add more rotations here if needed:
+		# rotation_offset = rotation_offset.rotated(Vector3.UP, deg_to_rad(X))     # Yaw
+		# rotation_offset = rotation_offset.rotated(Vector3.FORWARD, deg_to_rad(X)) # Roll
+
+		equipped_weapon.global_transform.basis = right_hand_transform.basis * rotation_offset
+
+		# Recalculate position after rotation (rotation happens around grip point)
+		grip_world_offset = equipped_weapon.global_transform.basis * grip_local_pos
+		equipped_weapon.global_position = right_hand_transform.origin - grip_world_offset
+		print("DEBUG: Set weapon position to: ", equipped_weapon.global_position)
+	else:
+		# Fallback: if no grip point, just match hand transform
+		equipped_weapon.global_transform = right_hand_transform
+		print("DEBUG: No main_grip, set weapon transform to hand transform")
+
+func _process(_delta):
+	# WEAPON UPDATE ORDER - CRITICAL for proper IK-based positioning:
+	# 1. Set IK targets (where hands should go based on weapon state/aiming)
+	# 2. Apply IK (moves bones to targets)
+	# 3. Weapon automatically follows hand bone (no manual update needed - it's parented to BoneAttachment3D)
+
+	# STEP 1: Set IK targets for weapon holding
+	if equipped_weapon:
+		_update_weapon_ik_targets()
+
+	# STEP 2: Apply IK - start() moves bones to targets
+	# IMPORTANT: When holding weapons, always keep hand IK active (even if ik_enabled is false)
+	# This ensures weapons stay in hand regardless of IK toggle state
+	if ik_enabled:
+		# IK enabled - apply all IK
+		if left_hand_ik:
+			left_hand_ik.start()
+		if right_hand_ik:
+			right_hand_ik.start()
+		if left_foot_ik:
+			left_foot_ik.start()
+		if right_foot_ik:
+			right_foot_ik.start()
+	else:
+		# IK disabled - but keep hand IK active if holding weapon
+		if equipped_weapon:
+			# Weapon equipped - keep hand IK active for weapon holding
+			if right_hand_ik:
+				right_hand_ik.start()  # Right hand must follow weapon position
+			# Left hand IK depends on weapon type
+			if left_hand_ik and equipped_weapon.is_two_handed:
+				left_hand_ik.start()  # Two-handed weapons need left hand IK
+			else:
+				if left_hand_ik:
+					left_hand_ik.stop()  # One-handed weapons don't need left hand IK
+			# Disable foot IK when IK is toggled off
+			if left_foot_ik:
+				left_foot_ik.stop()
+			if right_foot_ik:
+				right_foot_ik.stop()
+		else:
+			# No weapon - stop all IK
+			if left_hand_ik:
+				left_hand_ik.stop()
+			if right_hand_ik:
+				right_hand_ik.stop()
+			if left_foot_ik:
+				left_foot_ik.stop()
+			if right_foot_ik:
+				right_foot_ik.stop()
+
+	# STEP 3: Weapon automatically follows hand bone (parented to BoneAttachment3D)
+	# No manual update needed!
