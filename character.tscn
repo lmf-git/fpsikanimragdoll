@@ -65,26 +65,26 @@ collision_margin = 0.2
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 1.2, 0.3)
 script = ExtResource("5")
 target_color = Color(1, 0, 0, 1)
-target_size = 0.05
-show_in_game = false
+target_size = 0.1
+show_in_game = true
 
 [node name="RightHandTarget" type="Node3D" parent="IKTargets"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5, 1.2, 0.3)
 script = ExtResource("5")
 target_color = Color(0, 1, 0, 1)
-target_size = 0.05
-show_in_game = false
+target_size = 0.1
+show_in_game = true
 
 [node name="LeftFootTarget" type="Node3D" parent="IKTargets"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.15, 0, 0.2)
 script = ExtResource("5")
 target_color = Color(0, 0, 1, 1)
-target_size = 0.05
-show_in_game = false
+target_size = 0.1
+show_in_game = true
 
 [node name="RightFootTarget" type="Node3D" parent="IKTargets"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.15, 0, 0.2)
 script = ExtResource("5")
 target_color = Color(1, 1, 0, 1)
-target_size = 0.05
-show_in_game = false
+target_size = 0.1
+show_in_game = true

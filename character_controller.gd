@@ -443,7 +443,9 @@ func _input(event):
 	if event.is_action_pressed("toggle_ragdoll"):
 		toggle_ragdoll()
 
-	if event.is_action_pressed("ui_accept"):  # E key for pickup
+	# E key for weapon pickup/drop
+	if event is InputEventKey and event.pressed and event.keycode == KEY_E:
+		print("E key pressed - equipped_weapon: ", equipped_weapon, ", nearby_weapon: ", nearby_weapon)
 		if equipped_weapon:
 			drop_weapon()
 		elif nearby_weapon:
@@ -656,6 +658,7 @@ func _detect_nearby_weapon():
 			if distance < closest_distance:
 				nearby_weapon = weapon
 				closest_distance = distance
+
 
 func _find_weapons_recursive(node: Node, weapons: Array):
 	"""Recursively find all Weapon nodes"""
