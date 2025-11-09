@@ -1339,6 +1339,23 @@ func _shoot_weapon():
 
 	var shoot_direction = -camera.global_transform.basis.z  # Forward direction
 
+	# Apply weapon spread based on weapon state
+	var spread_angle = 0.0
+	if weapon_state == WeaponState.AIMING:
+		spread_angle = deg_to_rad(0.5)  # Very tight spread when aiming down sights
+	else:  # READY or SHEATHED (hip fire)
+		spread_angle = deg_to_rad(3.0)  # Wide spread when hip firing
+
+	# Add random spread to direction
+	var spread_x = randf_range(-spread_angle, spread_angle)
+	var spread_y = randf_range(-spread_angle, spread_angle)
+
+	# Apply spread by rotating the shoot direction
+	var spread_basis = Basis()
+	spread_basis = spread_basis.rotated(camera.global_transform.basis.x, spread_y)  # Pitch
+	spread_basis = spread_basis.rotated(camera.global_transform.basis.y, spread_x)  # Yaw
+	shoot_direction = spread_basis * shoot_direction
+
 	# Shoot from camera position
 	var shoot_from = camera.global_position
 
