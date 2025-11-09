@@ -27,6 +27,15 @@ var is_jumping: bool = false
 var jump_time: float = 0.0
 @export var max_jump_time: float = 0.3  # Time to blend IK during jump
 
+# Walk/run animation state
+var walk_cycle_time: float = 0.0  # Time accumulator for walk cycle
+@export var walk_cycle_speed: float = 4.0  # Speed of walk cycle (steps per second)
+@export var run_cycle_speed: float = 6.0  # Speed of run cycle (faster)
+@export var walk_foot_lift: float = 0.15  # How high feet lift when walking
+@export var run_foot_lift: float = 0.25  # How high feet lift when running
+var is_moving: bool = false
+var is_running: bool = false
+
 # Camera
 @export var fps_camera: Camera3D
 @export var tps_camera: Camera3D
@@ -865,16 +874,41 @@ func _update_ik_for_stance(delta):
 	var left_hand_target = ik_targets_node.get_node_or_null("LeftHandTarget")
 	var right_hand_target = ik_targets_node.get_node_or_null("RightHandTarget")
 
-	# Adjust feet based on stance and jump
+	# Update movement state
+	is_moving = velocity.length() > 0.1
+	is_running = is_moving and Input.is_action_pressed("sprint")  # Assuming sprint action exists
+
+	# Update walk cycle time
+	if is_moving and not is_jumping:
+		var cycle_speed = run_cycle_speed if is_running else walk_cycle_speed
+		walk_cycle_time += delta * cycle_speed
+	else:
+		walk_cycle_time = 0.0
+
+	# Adjust feet based on stance, jump, and movement
 	if left_foot_target and right_foot_target and skeleton:
 		var base_foot_height = -0.9  # Default standing foot position
+		var left_foot_offset = 0.0
+		var right_foot_offset = 0.0
 
 		if is_jumping:
 			# During jump, bring feet up
 			var jump_blend = min(jump_time / max_jump_time, 1.0)
 			base_foot_height = lerp(-0.9, -0.3, jump_blend)  # Feet come up during jump
+		elif is_moving and current_stance == Stance.STANDING:
+			# Procedural walk/run animation
+			var foot_lift = run_foot_lift if is_running else walk_foot_lift
+
+			# Create alternating foot stepping pattern using sine wave
+			# Left foot and right foot are 180 degrees out of phase
+			left_foot_offset = sin(walk_cycle_time * PI) * foot_lift
+			right_foot_offset = sin((walk_cycle_time + 1.0) * PI) * foot_lift
+
+			# Ensure only positive lift (feet don't go below ground)
+			left_foot_offset = max(0.0, left_foot_offset)
+			right_foot_offset = max(0.0, right_foot_offset)
 		else:
-			# Adjust feet based on stance
+			# Adjust feet based on stance when not moving
 			match current_stance:
 				Stance.STANDING:
 					base_foot_height = -0.9
@@ -884,8 +918,10 @@ func _update_ik_for_stance(delta):
 					base_foot_height = 0.0  # Feet level with body when prone
 
 		# Set foot positions (local to character)
-		left_foot_target.position.y = lerp(left_foot_target.position.y, base_foot_height, stance_transition_speed * delta)
-		right_foot_target.position.y = lerp(right_foot_target.position.y, base_foot_height, stance_transition_speed * delta)
+		var target_left_height = base_foot_height + left_foot_offset
+		var target_right_height = base_foot_height + right_foot_offset
+		left_foot_target.position.y = lerp(left_foot_target.position.y, target_left_height, stance_transition_speed * delta)
+		right_foot_target.position.y = lerp(right_foot_target.position.y, target_right_height, stance_transition_speed * delta)
 
 	# Adjust hands based on stance (when not holding weapon)
 	if not equipped_weapon and left_hand_target and right_hand_target:
@@ -1662,42 +1698,44 @@ func _process(_delta):
 		if right_foot_ik:
 			right_foot_ik.start()
 
-		# Hand IK depends on weapon state when weapon is equipped
+		# Hand IK depends on weapon equipped state
 		if equipped_weapon:
-			# Right hand IK only when AIMING, use default animation otherwise
+			# Weapon equipped - always use right hand IK to hold weapon
+			if right_hand_ik:
+				right_hand_ik.start()
+			# Left hand IK when AIMING for two-handed grip
 			if weapon_state == WeaponState.AIMING:
-				if right_hand_ik:
-					right_hand_ik.start()
-				# Left hand IK for aiming
 				if left_hand_ik:
 					left_hand_ik.start()
 			else:
-				# READY or SHEATHED - use default animation for hands
-				if right_hand_ik:
-					right_hand_ik.stop()
+				# Not aiming - disable left hand IK for relaxed pose
 				if left_hand_ik:
 					left_hand_ik.stop()
 		else:
-			# No weapon - use all IK normally
+			# No weapon - use default animation for hands
 			if left_hand_ik:
-				left_hand_ik.start()
+				left_hand_ik.stop()
 			if right_hand_ik:
-				right_hand_ik.start()
+				right_hand_ik.stop()
 	else:
-		# IK disabled - but keep hand IK active if aiming with weapon
-		if equipped_weapon and weapon_state == WeaponState.AIMING:
-			# Only enable hand IK when actively aiming
+		# IK disabled - but keep hand IK active if weapon equipped
+		if equipped_weapon:
+			# Keep right hand IK active to hold weapon
 			if right_hand_ik:
 				right_hand_ik.start()
-			if left_hand_ik:
+			# Left hand IK only when aiming
+			if weapon_state == WeaponState.AIMING and left_hand_ik:
 				left_hand_ik.start()
+			else:
+				if left_hand_ik:
+					left_hand_ik.stop()
 			# Disable foot IK when IK is toggled off
 			if left_foot_ik:
 				left_foot_ik.stop()
 			if right_foot_ik:
 				right_foot_ik.stop()
 		else:
-			# Stop all IK
+			# No weapon - stop all IK
 			if left_hand_ik:
 				left_hand_ik.stop()
 			if right_hand_ik:
