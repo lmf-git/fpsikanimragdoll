@@ -27,13 +27,16 @@ func _run():
 
 	# Remove existing physical bones and simulator
 	print("\nRemoving old physical bones...")
+	var to_remove = []
 	for child in skeleton.get_children():
 		if child is PhysicalBone3D or child is PhysicalBoneSimulator3D:
 			print("  Removing: ", child.name)
-			child.queue_free()
+			to_remove.append(child)
 
-	# Wait a frame for cleanup
-	await get_tree().process_frame
+	# Remove them
+	for node in to_remove:
+		skeleton.remove_child(node)
+		node.queue_free()
 
 	print("\nCreating PhysicalBoneSimulator3D...")
 	var simulator = PhysicalBoneSimulator3D.new()
