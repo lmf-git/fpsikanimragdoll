@@ -286,35 +286,35 @@ func _create_ragdoll_bones():
 
 		# Ultra-specific constraints - EXTREMELY tight, near-rigid!
 		if bone_suffix in ["Hips"]:
-			# Hips - completely locked (root)
-			swing_limit = deg_to_rad(0.1)
-			twist_limit = deg_to_rad(0.1)
-			damping = 0.9999
-			bias = 0.9999
+			# Hips/pelvis - COMPLETELY LOCKED (no rotation at all)
+			swing_limit = deg_to_rad(0.01)
+			twist_limit = deg_to_rad(0.01)
+			damping = 0.99999
+			bias = 0.99999
 		elif bone_suffix in ["Spine", "Chest", "Upper_Chest"]:
-			# Spine/torso - completely locked
-			swing_limit = deg_to_rad(0.2)
-			twist_limit = deg_to_rad(0.1)
-			damping = 0.9995
-			bias = 0.9995
+			# Spine/torso - COMPLETELY LOCKED (no rotation at all)
+			swing_limit = deg_to_rad(0.01)
+			twist_limit = deg_to_rad(0.01)
+			damping = 0.99999
+			bias = 0.99999
 		elif bone_suffix in ["Neck"]:
-			# Neck - extremely restricted rotation
-			swing_limit = deg_to_rad(1)
-			twist_limit = deg_to_rad(0.5)
-			damping = 0.995
-			bias = 0.995
+			# Neck - COMPLETELY LOCKED (no rotation at all)
+			swing_limit = deg_to_rad(0.01)
+			twist_limit = deg_to_rad(0.01)
+			damping = 0.99999
+			bias = 0.99999
 		elif bone_suffix in ["Head"]:
-			# Head - extremely minimal rotation
-			swing_limit = deg_to_rad(0.5)
-			twist_limit = deg_to_rad(0.2)
-			damping = 0.995
-			bias = 0.995
+			# Head - COMPLETELY LOCKED (no rotation at all)
+			swing_limit = deg_to_rad(0.01)
+			twist_limit = deg_to_rad(0.01)
+			damping = 0.99999
+			bias = 0.99999
 		elif "Shoulder" in bone_suffix:
-			# Shoulders - completely locked
-			swing_limit = deg_to_rad(0.5)
-			twist_limit = deg_to_rad(0.2)
-			damping = 0.998
-			bias = 0.998
+			# Shoulders - COMPLETELY LOCKED (no rotation at all)
+			swing_limit = deg_to_rad(0.01)
+			twist_limit = deg_to_rad(0.01)
+			damping = 0.99999
+			bias = 0.99999
 		elif bone_suffix in ["Upper_Leg", "L_Upper_Leg", "R_Upper_Leg"]:
 			# Upper legs - very restricted hip
 			swing_limit = deg_to_rad(3)
@@ -379,15 +379,15 @@ func _create_ragdoll_bones():
 		# EXTREMELY stiff joints - nearly rigid skeleton
 		physical_bone.set("joint_constraints/bias", bias)
 		physical_bone.set("joint_constraints/damping", damping)
-		physical_bone.set("joint_constraints/softness", 0.01)  # Extremely rigid, not springy
-		physical_bone.set("joint_constraints/relaxation", 0.99)  # Very high stability
+		physical_bone.set("joint_constraints/softness", 0.001)  # Extremely rigid, not springy
+		physical_bone.set("joint_constraints/relaxation", 0.999)  # Very high stability
 
 		# Physics properties - add damping to resist all motion
 		physical_bone.mass = 1.0
 		physical_bone.friction = 1.0  # Maximum friction
 		physical_bone.bounce = 0.0
-		physical_bone.linear_damp = 0.5  # Resist linear movement
-		physical_bone.angular_damp = 0.9  # Heavy resistance to rotation
+		physical_bone.linear_damp = 0.8  # Strong resistance to linear movement
+		physical_bone.angular_damp = 0.99  # Extremely heavy resistance to rotation
 
 		# CRITICAL: Set collision layers and masks for proper physics
 		physical_bone.collision_layer = 2  # Layer 2 for ragdoll parts
