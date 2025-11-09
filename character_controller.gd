@@ -1558,7 +1558,7 @@ func _update_weapon_ik_targets():
 
 			# Convert rotation difference to horizontal hand offset
 			# Multiply by distance from body to get more shift when looking further away
-			var horizontal_shift = sin(rotation_diff) * abs(base_offset.z) * 0.3  # 30% of forward distance
+			var horizontal_shift = sin(rotation_diff) * abs(base_offset.z) * 0.5  # 50% of forward distance
 			base_offset.x = horizontal_shift
 
 		# Use chest bone as anchor point for body-relative positioning
