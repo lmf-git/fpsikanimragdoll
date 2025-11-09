@@ -266,28 +266,28 @@ func _create_ragdoll_bones():
 		# Ultra-specific constraints - very tight!
 		if bone_suffix in ["Hips"]:
 			# Hips - nearly locked (root)
-			swing_limit = deg_to_rad(2)
-			twist_limit = deg_to_rad(1)
-			damping = 0.99
-			bias = 0.99
+			swing_limit = deg_to_rad(0.5)
+			twist_limit = deg_to_rad(0.5)
+			damping = 0.999
+			bias = 0.999
 		elif bone_suffix in ["Spine", "Chest", "Upper_Chest"]:
-			# Spine/torso - minimal flex
-			swing_limit = deg_to_rad(3)
+			# Spine/torso - almost completely locked
+			swing_limit = deg_to_rad(1)
+			twist_limit = deg_to_rad(0.5)
+			damping = 0.995
+			bias = 0.995
+		elif bone_suffix in ["Neck"]:
+			# Neck - very restricted rotation
+			swing_limit = deg_to_rad(5)
 			twist_limit = deg_to_rad(2)
 			damping = 0.98
 			bias = 0.98
-		elif bone_suffix in ["Neck"]:
-			# Neck - controlled rotation
-			swing_limit = deg_to_rad(10)
-			twist_limit = deg_to_rad(5)
-			damping = 0.92
-			bias = 0.92
 		elif bone_suffix in ["Head"]:
-			# Head - minimal rotation
-			swing_limit = deg_to_rad(8)
-			twist_limit = deg_to_rad(4)
-			damping = 0.92
-			bias = 0.92
+			# Head - very minimal rotation
+			swing_limit = deg_to_rad(3)
+			twist_limit = deg_to_rad(1)
+			damping = 0.98
+			bias = 0.98
 		elif "Shoulder" in bone_suffix:
 			# Shoulders - almost locked
 			swing_limit = deg_to_rad(5)
@@ -308,11 +308,11 @@ func _create_ragdoll_bones():
 			damping = 0.88
 			bias = 0.88
 		elif bone_suffix in ["Foot", "L_Foot", "R_Foot"]:
-			# Feet - ankle, limited
-			swing_limit = deg_to_rad(12)
-			twist_limit = deg_to_rad(3)
-			damping = 0.90
-			bias = 0.90
+			# Feet/ankles - very restricted
+			swing_limit = deg_to_rad(3)
+			twist_limit = deg_to_rad(1)
+			damping = 0.98
+			bias = 0.98
 		elif bone_suffix in ["Toes", "L_Toes", "R_Toes"]:
 			# Toes - very limited
 			swing_limit = deg_to_rad(20)
@@ -332,11 +332,11 @@ func _create_ragdoll_bones():
 			damping = 0.88
 			bias = 0.88
 		elif bone_suffix in ["Hand", "L_Hand", "R_Hand"]:
-			# Hands/wrists - restricted
-			swing_limit = deg_to_rad(15)
-			twist_limit = deg_to_rad(5)
-			damping = 0.90
-			bias = 0.90
+			# Hands/wrists - very restricted
+			swing_limit = deg_to_rad(5)
+			twist_limit = deg_to_rad(2)
+			damping = 0.98
+			bias = 0.98
 		elif "Finger" in bone_suffix or "Thumb" in bone_suffix or "Index" in bone_suffix or "Middle" in bone_suffix or "Ring" in bone_suffix or "Little" in bone_suffix:
 			# Fingers - small, controlled
 			swing_limit = deg_to_rad(30)
@@ -532,8 +532,8 @@ func _update_head_look(delta):
 		var neck_target = Basis()
 		# Neck contributes 40% of the yaw rotation
 		neck_target = neck_target.rotated(Vector3.UP, head_yaw * 0.4)
-		# Neck contributes 30% of pitch (use local right axis after yaw rotation)
-		neck_target = neck_target.rotated(neck_target.x, head_pitch * 0.3)
+		# Neck contributes 30% of pitch (negated due to 180° model rotation)
+		neck_target = neck_target.rotated(neck_target.x, -head_pitch * 0.3)
 		neck_target = neck_target * original_neck_pose.basis
 
 		neck_pose.basis = neck_pose.basis.slerp(neck_target, head_rotation_speed * delta)
@@ -544,8 +544,8 @@ func _update_head_look(delta):
 	var head_target = Basis()
 	# Head contributes 60% of yaw rotation
 	head_target = head_target.rotated(Vector3.UP, head_yaw * 0.6)
-	# Head contributes 70% of pitch (use local right axis after yaw rotation)
-	head_target = head_target.rotated(head_target.x, head_pitch * 0.7)
+	# Head contributes 70% of pitch (negated due to 180° model rotation)
+	head_target = head_target.rotated(head_target.x, -head_pitch * 0.7)
 	head_target = head_target * original_head_pose.basis
 
 	head_pose.basis = head_pose.basis.slerp(head_target, head_rotation_speed * delta)
