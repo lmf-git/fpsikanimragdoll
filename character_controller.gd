@@ -467,17 +467,32 @@ func _create_ragdoll_bones():
 			physical_bone.set("joint_constraints/relaxation", 1.0)
 
 		# Physics properties - add damping to resist all motion
-		physical_bone.mass = 1.0
+		# Make torso/head MUCH heavier to act as anchor and resist spinning
+		if bone_suffix in ["Hips", "Spine", "Chest", "Upper_Chest"]:
+			physical_bone.mass = 10.0  # Very heavy torso to prevent spinning
+		elif bone_suffix in ["Head"]:
+			physical_bone.mass = 5.0  # Heavy head to prevent spinning
+		elif bone_suffix in ["Neck"]:
+			physical_bone.mass = 3.0  # Heavy neck to prevent spinning
+		else:
+			physical_bone.mass = 1.0  # Normal mass for limbs
+
 		physical_bone.friction = 1.0  # Maximum friction
 		physical_bone.bounce = 0.0
 
 		# Apply extreme damping for upper body and legs to prevent any rotation
 		if bone_suffix in ["Hips", "Spine", "Chest", "Upper_Chest", "Neck", "Head", "Shoulder", "L_Shoulder", "R_Shoulder", "Upper_Arm", "L_Upper_Arm", "R_Upper_Arm", "Upper_Leg", "L_Upper_Leg", "R_Upper_Leg", "Foot", "L_Foot", "R_Foot"]:
-			physical_bone.linear_damp = 1.0  # Maximum resistance to movement
-			physical_bone.angular_damp = 1.0  # Maximum resistance to rotation
+			physical_bone.linear_damp = 2.0  # Extreme resistance to movement
+			physical_bone.angular_damp = 5.0  # Extreme resistance to rotation (prevents spinning)
 		else:
 			physical_bone.linear_damp = 0.8  # Strong resistance to linear movement
 			physical_bone.angular_damp = 0.99  # Extremely heavy resistance to rotation
+
+		# Lock rotation axes for torso/head/neck to completely prevent spinning
+		if bone_suffix in ["Hips", "Spine", "Chest", "Upper_Chest", "Neck", "Head"]:
+			physical_bone.axis_lock_angular_x = true
+			physical_bone.axis_lock_angular_y = true
+			physical_bone.axis_lock_angular_z = true
 
 		# CRITICAL: Set collision layers and masks for proper physics
 		physical_bone.collision_layer = 2  # Layer 2 for ragdoll parts
