@@ -149,6 +149,8 @@ func equip(character: Node3D, hand_attachment: Node3D = null):
 
 		# Apply rotation offset first (e.g., rotate pistol to point forward)
 		var rotation_offset = Basis()
+		# First rotate to align weapon forward
+		rotation_offset = rotation_offset.rotated(Vector3.UP, deg_to_rad(90))  # Yaw 90 degrees right
 		rotation_offset = rotation_offset.rotated(Vector3.RIGHT, deg_to_rad(-90))  # Pitch down 90 degrees
 		transform.basis = rotation_offset
 
