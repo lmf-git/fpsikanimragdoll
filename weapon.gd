@@ -38,6 +38,20 @@ func _ready():
 		freeze = false
 		gravity_scale = 1.0
 
+	# Ensure grip points are found (in case NodePath wasn't auto-resolved)
+	if not main_grip:
+		main_grip = get_node_or_null("MainGrip")
+		if main_grip:
+			print("Found MainGrip node in _ready(): ", main_grip)
+
+	if not secondary_grip:
+		secondary_grip = get_node_or_null("SecondaryGrip")
+
+	if not muzzle_point:
+		muzzle_point = get_node_or_null("MuzzlePoint")
+
+	print("Weapon _ready - main_grip: ", main_grip, ", secondary_grip: ", secondary_grip, ", muzzle_point: ", muzzle_point)
+
 func _process(delta):
 	# Update shoot cooldown
 	if not can_shoot:

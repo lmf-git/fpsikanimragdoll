@@ -1427,7 +1427,10 @@ func _process(_delta):
 		_update_weapon_ik_targets()
 
 	# STEP 2: Apply IK - start() moves bones to targets
+	# IMPORTANT: When holding weapons, always keep hand IK active (even if ik_enabled is false)
+	# This ensures weapons stay in hand regardless of IK toggle state
 	if ik_enabled:
+		# IK enabled - apply all IK
 		if left_hand_ik:
 			left_hand_ik.start()
 		if right_hand_ik:
@@ -1437,15 +1440,32 @@ func _process(_delta):
 		if right_foot_ik:
 			right_foot_ik.start()
 	else:
-		# Stop IK when disabled
-		if left_hand_ik:
-			left_hand_ik.stop()
-		if right_hand_ik:
-			right_hand_ik.stop()
-		if left_foot_ik:
-			left_foot_ik.stop()
-		if right_foot_ik:
-			right_foot_ik.stop()
+		# IK disabled - but keep hand IK active if holding weapon
+		if equipped_weapon:
+			# Weapon equipped - keep hand IK active for weapon holding
+			if right_hand_ik:
+				right_hand_ik.start()  # Right hand must follow weapon position
+			# Left hand IK depends on weapon type
+			if left_hand_ik and equipped_weapon.is_two_handed:
+				left_hand_ik.start()  # Two-handed weapons need left hand IK
+			else:
+				if left_hand_ik:
+					left_hand_ik.stop()  # One-handed weapons don't need left hand IK
+			# Disable foot IK when IK is toggled off
+			if left_foot_ik:
+				left_foot_ik.stop()
+			if right_foot_ik:
+				right_foot_ik.stop()
+		else:
+			# No weapon - stop all IK
+			if left_hand_ik:
+				left_hand_ik.stop()
+			if right_hand_ik:
+				right_hand_ik.stop()
+			if left_foot_ik:
+				left_foot_ik.stop()
+			if right_foot_ik:
+				right_foot_ik.stop()
 
 	# STEP 3: Weapon automatically follows hand bone (parented to BoneAttachment3D)
 	# No manual update needed!
