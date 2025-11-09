@@ -1003,12 +1003,19 @@ func _update_weapon_position():
 			equipped_weapon.global_position = right_hand_transform.origin + right_hand_transform.basis * weapon_offset
 			equipped_weapon.global_transform.basis = right_hand_transform.basis
 
-		# Update IK targets - ONLY left hand for two-handed weapons when not aiming
-		if ik_targets_node and equipped_weapon.is_two_handed and equipped_weapon.secondary_grip:
-			# Left hand IK target to secondary grip (for two-handed weapons only)
-			var left_hand_target = ik_targets_node.get_node_or_null("LeftHandTarget")
-			if left_hand_target:
-				left_hand_target.global_position = equipped_weapon.secondary_grip.global_position
+		# Update IK targets for two-handed weapons - use BOTH hands
+		if ik_targets_node and equipped_weapon.is_two_handed:
+			# Right hand to main grip for two-handed weapons
+			if equipped_weapon.main_grip:
+				var right_hand_target = ik_targets_node.get_node_or_null("RightHandTarget")
+				if right_hand_target:
+					right_hand_target.global_position = equipped_weapon.main_grip.global_position
+
+			# Left hand to secondary grip (foregrip)
+			if equipped_weapon.secondary_grip:
+				var left_hand_target = ik_targets_node.get_node_or_null("LeftHandTarget")
+				if left_hand_target:
+					left_hand_target.global_position = equipped_weapon.secondary_grip.global_position
 
 func _process(_delta):
 	# Update weapon position to follow hand
