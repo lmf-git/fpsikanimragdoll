@@ -7,6 +7,7 @@ class_name TPSCamera
 @export var follow_height: float = 1.5
 @export var camera_smoothness: float = 10.0
 @export var collision_margin: float = 0.2
+@export var min_distance: float = 0.5  # Minimum distance to prevent excessive zoom
 
 var current_distance: float = 0.0
 
@@ -51,7 +52,9 @@ func _physics_process(delta):
 	if result:
 		# Hit something, move camera closer
 		var hit_distance = target_pos.distance_to(result.position)
-		current_distance = lerp(current_distance, hit_distance - collision_margin, camera_smoothness * delta)
+		# Clamp to minimum distance to prevent excessive zoom
+		var target_distance = max(hit_distance - collision_margin, min_distance)
+		current_distance = lerp(current_distance, target_distance, camera_smoothness * delta)
 		var adjusted_offset = offset.normalized() * current_distance
 		final_pos = target_pos + adjusted_offset
 	else:

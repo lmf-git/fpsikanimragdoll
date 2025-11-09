@@ -11,6 +11,8 @@ class_name CharacterController
 @export var fps_camera: Camera3D
 @export var tps_camera: Camera3D
 @export var camera_mode: int = 0  # 0 = FPS, 1 = TPS
+@export var max_camera_pitch_up: float = 70.0  # Maximum degrees to look up
+@export var max_camera_pitch_down: float = 80.0  # Maximum degrees to look down
 
 # Character parts
 @export var skeleton: Skeleton3D
@@ -248,51 +250,81 @@ func _create_ragdoll_bones():
 		physical_bone.joint_type = PhysicalBone3D.JOINT_TYPE_CONE
 		physical_bone.joint_offset = Transform3D()  # No offset from bone
 
-		# Joint limits - specific to bone type for realistic movement
-		var swing_limit = deg_to_rad(45)
-		var twist_limit = deg_to_rad(30)
+		# Joint limits - MUCH tighter constraints for realistic skeleton movement
+		var swing_limit = deg_to_rad(20)  # Default very restricted
+		var twist_limit = deg_to_rad(10)
+		var damping = 0.5  # Joint damping/stiffness
 
-		# Tighter constraints for specific bone types
-		if bone_suffix in ["Head"]:
-			# Head - limited rotation
-			swing_limit = deg_to_rad(25)
-			twist_limit = deg_to_rad(15)
-		elif bone_suffix in ["Neck"]:
-			# Neck - moderate rotation
-			swing_limit = deg_to_rad(30)
-			twist_limit = deg_to_rad(20)
-		elif "Shoulder" in bone_suffix:
-			# Shoulders - very limited
-			swing_limit = deg_to_rad(20)
-			twist_limit = deg_to_rad(10)
-		elif bone_suffix in ["Upper_Leg", "L_Upper_Leg", "R_Upper_Leg"]:
-			# Upper legs (hips) - limited rotation
-			swing_limit = deg_to_rad(35)
-			twist_limit = deg_to_rad(15)
-		elif bone_suffix in ["Lower_Leg", "L_Lower_Leg", "R_Lower_Leg"]:
-			# Lower legs (knees) - hinge-like, very limited twist
-			swing_limit = deg_to_rad(70)  # Can bend forward
-			twist_limit = deg_to_rad(5)   # Almost no twist
-		elif bone_suffix in ["Upper_Arm", "L_Upper_Arm", "R_Upper_Arm"]:
-			# Upper arms - good range
-			swing_limit = deg_to_rad(60)
-			twist_limit = deg_to_rad(40)
-		elif bone_suffix in ["Lower_Arm", "L_Lower_Arm", "R_Lower_Arm"]:
-			# Lower arms (elbows) - hinge-like
-			swing_limit = deg_to_rad(75)
-			twist_limit = deg_to_rad(10)
-		elif "Finger" in bone_suffix or "Thumb" in bone_suffix or "Index" in bone_suffix or "Middle" in bone_suffix or "Ring" in bone_suffix or "Little" in bone_suffix:
-			# Fingers - small range
-			swing_limit = deg_to_rad(45)
+		# Very specific constraints for each bone type
+		if bone_suffix in ["Hips"]:
+			# Hips - almost no rotation (root of skeleton)
+			swing_limit = deg_to_rad(5)
 			twist_limit = deg_to_rad(5)
+			damping = 0.9
+		elif bone_suffix in ["Spine", "Chest", "Upper_Chest"]:
+			# Spine/torso - very limited, slight bend/twist only
+			swing_limit = deg_to_rad(10)
+			twist_limit = deg_to_rad(8)
+			damping = 0.8
+		elif bone_suffix in ["Neck"]:
+			# Neck - limited rotation
+			swing_limit = deg_to_rad(20)
+			twist_limit = deg_to_rad(15)
+			damping = 0.7
+		elif bone_suffix in ["Head"]:
+			# Head - very limited rotation (neck does most of the work)
+			swing_limit = deg_to_rad(15)
+			twist_limit = deg_to_rad(10)
+			damping = 0.7
+		elif "Shoulder" in bone_suffix:
+			# Shoulders - very limited (just connection point)
+			swing_limit = deg_to_rad(15)
+			twist_limit = deg_to_rad(5)
+			damping = 0.8
+		elif bone_suffix in ["Upper_Leg", "L_Upper_Leg", "R_Upper_Leg"]:
+			# Upper legs (hips) - realistic hip joint
+			swing_limit = deg_to_rad(30)
+			twist_limit = deg_to_rad(10)
+			damping = 0.6
+		elif bone_suffix in ["Lower_Leg", "L_Lower_Leg", "R_Lower_Leg"]:
+			# Lower legs (knees) - hinge joint, bend forward only
+			swing_limit = deg_to_rad(90)  # Can bend
+			twist_limit = deg_to_rad(3)   # Almost no twist
+			damping = 0.5
+		elif bone_suffix in ["Foot", "L_Foot", "R_Foot", "Toes", "L_Toes", "R_Toes"]:
+			# Feet/toes - ankle joint, limited
+			swing_limit = deg_to_rad(25)
+			twist_limit = deg_to_rad(5)
+			damping = 0.6
+		elif bone_suffix in ["Upper_Arm", "L_Upper_Arm", "R_Upper_Arm"]:
+			# Upper arms - shoulder joint, reasonable range
+			swing_limit = deg_to_rad(45)
+			twist_limit = deg_to_rad(30)
+			damping = 0.5
+		elif bone_suffix in ["Lower_Arm", "L_Lower_Arm", "R_Lower_Arm"]:
+			# Lower arms (elbows) - hinge joint
+			swing_limit = deg_to_rad(90)  # Can bend
+			twist_limit = deg_to_rad(5)   # Almost no twist
+			damping = 0.5
+		elif bone_suffix in ["Hand", "L_Hand", "R_Hand"]:
+			# Hands/wrists - limited
+			swing_limit = deg_to_rad(30)
+			twist_limit = deg_to_rad(15)
+			damping = 0.6
+		elif "Finger" in bone_suffix or "Thumb" in bone_suffix or "Index" in bone_suffix or "Middle" in bone_suffix or "Ring" in bone_suffix or "Little" in bone_suffix:
+			# Fingers - small range, finger joints
+			swing_limit = deg_to_rad(45)
+			twist_limit = deg_to_rad(3)
+			damping = 0.7
 
 		physical_bone.set("joint_constraints/swing_span", swing_limit)
 		physical_bone.set("joint_constraints/twist_span", twist_limit)
 
-		# Soften joints for more natural movement
-		physical_bone.set("joint_constraints/bias", 0.3)
-		physical_bone.set("joint_constraints/softness", 0.8)
-		physical_bone.set("joint_constraints/relaxation", 1.0)
+		# Much stiffer joints with higher bias and damping
+		physical_bone.set("joint_constraints/bias", 0.6)
+		physical_bone.set("joint_constraints/damping", damping)
+		physical_bone.set("joint_constraints/softness", 0.5)
+		physical_bone.set("joint_constraints/relaxation", 0.8)
 
 		# Physics properties
 		physical_bone.mass = 1.0
@@ -328,7 +360,8 @@ func _input(event):
 	if event is InputEventMouseMotion and Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED:
 		camera_rotation.x -= event.relative.y * mouse_sensitivity
 		camera_rotation.y -= event.relative.x * mouse_sensitivity
-		camera_rotation.x = clamp(camera_rotation.x, deg_to_rad(-89), deg_to_rad(89))
+		# Clamp pitch (x rotation) with configurable limits
+		camera_rotation.x = clamp(camera_rotation.x, deg_to_rad(-max_camera_pitch_up), deg_to_rad(max_camera_pitch_down))
 
 	if event.is_action_pressed("toggle_camera"):
 		print("\n=== TOGGLE CAMERA PRESSED ===")
