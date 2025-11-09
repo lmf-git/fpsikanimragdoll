@@ -97,6 +97,12 @@ var muzzle_flash_light: OmniLight3D = null
 var muzzle_flash_timer: float = 0.0
 const MUZZLE_FLASH_DURATION: float = 0.05  # 50ms flash
 
+# Crosshair UI
+var crosshair_ui: Control = null
+var crosshair_dot: ColorRect = null
+@export var crosshair_size: float = 4.0  # Size of crosshair dot in pixels
+@export var crosshair_color: Color = Color(1.0, 1.0, 1.0, 0.8)  # White with slight transparency
+
 # Ragdoll bone configuration - bones that will have physics
 const RAGDOLL_BONES = [
 	# Torso
@@ -205,6 +211,10 @@ func _ready():
 
 	# Set initial camera
 	_switch_camera(camera_mode)
+
+	# Create crosshair UI
+	_create_crosshair_ui()
+
 	print("=== End Character Controller Ready ===\n")
 
 func find_skeleton(node: Node) -> Skeleton3D:
@@ -224,6 +234,79 @@ func find_mesh_instance(node: Node) -> MeshInstance3D:
 		if result:
 			return result
 	return null
+
+func _create_crosshair_ui():
+	"""Create crosshair UI overlay"""
+	# Create a CanvasLayer to hold the UI
+	var canvas_layer = CanvasLayer.new()
+	canvas_layer.name = "CrosshairLayer"
+	add_child(canvas_layer)
+
+	# Create a Control node as container
+	crosshair_ui = Control.new()
+	crosshair_ui.name = "CrosshairUI"
+	crosshair_ui.set_anchors_preset(Control.PRESET_FULL_RECT)  # Fill entire screen
+	crosshair_ui.mouse_filter = Control.MOUSE_FILTER_IGNORE  # Don't intercept mouse events
+	canvas_layer.add_child(crosshair_ui)
+
+	# Create crosshair dot (ColorRect for simple dot)
+	crosshair_dot = ColorRect.new()
+	crosshair_dot.name = "CrosshairDot"
+	crosshair_dot.color = crosshair_color
+	crosshair_dot.size = Vector2(crosshair_size, crosshair_size)
+	crosshair_dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	crosshair_ui.add_child(crosshair_dot)
+
+	# Start at screen center
+	var viewport_size = get_viewport().get_visible_rect().size
+	crosshair_dot.position = viewport_size / 2.0 - crosshair_dot.size / 2.0
+
+	print("Crosshair UI created")
+
+func _update_crosshair():
+	"""Update crosshair position to match weapon barrel direction"""
+	if not crosshair_dot or not equipped_weapon:
+		# No weapon equipped - hide crosshair or keep it at center
+		if crosshair_dot:
+			crosshair_dot.visible = false
+		return
+
+	# Show crosshair when weapon is equipped
+	crosshair_dot.visible = true
+
+	# Get camera
+	var camera = fps_camera if camera_mode == 0 else tps_camera
+	if not camera:
+		return
+
+	# If weapon has a muzzle point, raycast from there to find where it's aiming
+	var aim_point_3d: Vector3
+	if equipped_weapon.muzzle_point:
+		# Raycast from muzzle in the direction the barrel is pointing
+		var muzzle_pos = equipped_weapon.muzzle_point.global_position
+		var muzzle_forward = -equipped_weapon.muzzle_point.global_transform.basis.z
+
+		# Perform raycast to find hit point
+		var space_state = get_world_3d().direct_space_state
+		var query = PhysicsRayQueryParameters3D.create(muzzle_pos, muzzle_pos + muzzle_forward * 100.0)
+		query.exclude = [self, equipped_weapon]
+		query.collide_with_bodies = true
+		var result = space_state.intersect_ray(query)
+
+		if result:
+			aim_point_3d = result.position
+		else:
+			# No hit - use far point along barrel direction
+			aim_point_3d = muzzle_pos + muzzle_forward * 100.0
+	else:
+		# No muzzle point - use camera forward
+		aim_point_3d = camera.global_position + (-camera.global_transform.basis.z * 100.0)
+
+	# Project 3D point to 2D screen space
+	var screen_pos = camera.unproject_position(aim_point_3d)
+
+	# Position crosshair dot at screen position (centered on the dot)
+	crosshair_dot.position = screen_pos - crosshair_dot.size / 2.0
 
 func _create_ik_system():
 	"""Create SkeletonIK3D nodes at runtime and link them to targets"""
@@ -896,6 +979,9 @@ func _physics_process(delta):
 
 	# Update recoil recovery
 	_update_recoil(delta)
+
+	# Update crosshair position
+	_update_crosshair()
 
 	# Detect nearby weapons for pickup
 	_detect_nearby_weapon()
