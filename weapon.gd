@@ -37,7 +37,9 @@ func equip(character: Node3D):
 	is_equipped = true
 	holder = character
 
-	# Disable physics when equipped
+	# Disable physics when equipped - CRITICAL: set freeze_mode to KINEMATIC
+	# This allows us to move the weapon programmatically while physics is disabled
+	freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC  # Allow programmatic movement
 	freeze = true
 	gravity_scale = 0.0
 	collision_layer = 0
@@ -52,7 +54,7 @@ func equip(character: Node3D):
 	global_position = character.global_position
 	global_rotation = character.global_rotation
 
-	print("Weapon ", weapon_name, " equipped successfully")
+	print("Weapon ", weapon_name, " equipped successfully (freeze_mode=KINEMATIC)")
 	return true
 
 func unequip():
@@ -65,6 +67,7 @@ func unequip():
 	holder = null
 
 	# Re-enable physics
+	freeze_mode = RigidBody3D.FREEZE_MODE_STATIC  # Reset to default
 	freeze = false
 	gravity_scale = 1.0
 	collision_layer = 4  # Weapon layer
