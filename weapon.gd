@@ -27,8 +27,8 @@ func _ready():
 		freeze = false
 		gravity_scale = 1.0
 
-func equip(character: Node3D):
-	"""Equip this weapon to a character"""
+func equip(character: Node3D, hand_attachment: Node3D = null):
+	"""Equip this weapon to a character's hand attachment node"""
 	if is_equipped:
 		print("Weapon ", weapon_name, " already equipped!")
 		return false
@@ -45,16 +45,38 @@ func equip(character: Node3D):
 	collision_layer = 0
 	collision_mask = 0
 
-	# Attach to character
+	# Detach from current parent
 	if get_parent():
 		get_parent().remove_child(self)
-	character.add_child(self)
 
-	# Position weapon at character's hand
-	global_position = character.global_position
-	global_rotation = character.global_rotation
+	# Parent to hand attachment if provided, otherwise to character
+	var attach_to = hand_attachment if hand_attachment else character
+	attach_to.add_child(self)
 
-	print("Weapon ", weapon_name, " equipped successfully (freeze_mode=KINEMATIC)")
+	# Set local transform relative to hand
+	# If we have a main_grip, offset the weapon so grip aligns with hand bone origin
+	if main_grip:
+		# Get grip offset in local space
+		var grip_local_pos = main_grip.position
+
+		# Apply rotation offset first (e.g., rotate pistol to point forward)
+		var rotation_offset = Basis()
+		rotation_offset = rotation_offset.rotated(Vector3.RIGHT, deg_to_rad(-90))  # Pitch
+		transform.basis = rotation_offset
+
+		# Position weapon so grip point is at hand origin (0,0,0 in hand local space)
+		# This means weapon position = -grip_offset rotated by weapon basis
+		var grip_offset_rotated = transform.basis * grip_local_pos
+		transform.origin = -grip_offset_rotated
+
+		print("Weapon ", weapon_name, " equipped with grip offset: ", transform.origin)
+	else:
+		# No grip point - just place at hand origin with rotation offset
+		transform.origin = Vector3.ZERO
+		transform.basis = Basis().rotated(Vector3.RIGHT, deg_to_rad(-90))
+		print("Weapon ", weapon_name, " equipped at hand origin (no grip point)")
+
+	print("Weapon ", weapon_name, " equipped successfully, parented to: ", attach_to.name)
 	return true
 
 func unequip():

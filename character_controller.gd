@@ -99,6 +99,7 @@ var neck_bone_id: int = -1
 var chest_bone_id: int = -1  # For weapon positioning anchor
 var right_hand_bone_id: int = -1
 var left_hand_bone_id: int = -1
+var right_hand_attachment: BoneAttachment3D = null  # For attaching weapons to hand
 var original_head_pose: Transform3D
 var original_neck_pose: Transform3D
 var mesh_instance: MeshInstance3D
@@ -130,6 +131,15 @@ func _ready():
 
 		# Find mesh instance for visibility control
 		mesh_instance = find_mesh_instance(skeleton)
+
+		# Create BoneAttachment3D for right hand (for weapon attachment)
+		if right_hand_bone_id >= 0:
+			right_hand_attachment = BoneAttachment3D.new()
+			right_hand_attachment.name = "RightHandAttachment"
+			right_hand_attachment.bone_name = right_hand_bone_name
+			skeleton.add_child(right_hand_attachment)
+			right_hand_attachment.owner = self
+			print("Created BoneAttachment3D for right hand: ", right_hand_bone_name)
 
 	# Find cameras if not set (they should be children of this node)
 	if not fps_camera:
@@ -999,12 +1009,12 @@ func pickup_weapon(weapon: Weapon):
 	if not weapon or weapon.is_equipped:
 		return
 
-	# Equip the weapon
-	if weapon.equip(self):
+	# Equip the weapon - parent to right hand attachment so it follows IK automatically
+	if weapon.equip(self, right_hand_attachment):
 		equipped_weapon = weapon
 		nearby_weapon = null
 
-		# Weapon will be positioned in next _process() call via IK system
+		# Weapon is now parented to hand bone and will automatically follow IK transforms
 
 func drop_weapon():
 	"""Drop the currently equipped weapon"""
@@ -1170,9 +1180,9 @@ func _update_weapon_to_hand():
 
 func _process(_delta):
 	# WEAPON UPDATE ORDER - CRITICAL for proper IK-based positioning:
-	# 1. Set IK targets (where hands should go)
+	# 1. Set IK targets (where hands should go based on weapon state/aiming)
 	# 2. Apply IK (moves bones to targets)
-	# 3. Position weapon to follow IK-transformed hand
+	# 3. Weapon automatically follows hand bone (no manual update needed - it's parented to BoneAttachment3D)
 
 	# STEP 1: Set IK targets for weapon holding
 	if equipped_weapon:
@@ -1199,7 +1209,5 @@ func _process(_delta):
 		if right_foot_ik:
 			right_foot_ik.stop()
 
-	# STEP 3: Position weapon to follow IK-transformed hand bone
-	if equipped_weapon:
-		print("DEBUG: _process() calling _update_weapon_to_hand(), ik_enabled=", ik_enabled)
-		_update_weapon_to_hand()
+	# STEP 3: Weapon automatically follows hand bone (parented to BoneAttachment3D)
+	# No manual update needed!
