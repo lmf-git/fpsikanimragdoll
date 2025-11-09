@@ -124,9 +124,9 @@ func equip(character: Node3D, hand_attachment: Node3D = null):
 	holder = character
 
 	# Disable physics when equipped - CRITICAL: set freeze_mode to KINEMATIC
-	# This allows us to move the weapon programmatically while physics is disabled
-	freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC  # Allow programmatic movement
-	freeze = true
+	# This allows the weapon to follow its parent (BoneAttachment3D) while physics is disabled
+	freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC  # Allow parent-driven movement
+	freeze = false  # Must be false to follow parent transform
 	gravity_scale = 0.0
 	collision_layer = 0
 	collision_mask = 0
