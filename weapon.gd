@@ -31,6 +31,8 @@ var shoot_cooldown_timer: float = 0.0
 # State
 var is_equipped: bool = false
 var holder: Node3D = null
+var is_in_ragdoll_mode: bool = false  # Tracking if holder is ragdolled
+var should_monitor_collisions: bool = false  # Whether to check for drop on collision
 
 func _ready():
 	# Make weapon physics-enabled when not equipped
@@ -51,6 +53,9 @@ func _ready():
 		muzzle_point = get_node_or_null("MuzzlePoint")
 
 	print("Weapon _ready - main_grip: ", main_grip, ", secondary_grip: ", secondary_grip, ", muzzle_point: ", muzzle_point)
+
+	# Connect to collision signal for ragdoll drop detection
+	body_entered.connect(_on_body_entered)
 
 func _process(delta):
 	# Update shoot cooldown
@@ -206,3 +211,103 @@ func get_grip_rotation(grip_type: String) -> Basis:
 	elif grip_type == "secondary" and secondary_grip:
 		return secondary_grip.global_transform.basis
 	return global_transform.basis
+
+func enter_ragdoll_mode():
+	"""Enable ragdoll mode - weapon stays in hand but monitors for collisions to drop"""
+	if not is_equipped:
+		return
+
+	is_in_ragdoll_mode = true
+	should_monitor_collisions = true
+
+	# Enable physics but keep parented to hand
+	freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
+	freeze = false  # Allow movement
+	gravity_scale = 0.0  # No gravity while in hand
+
+	# Enable collision detection but don't collide with holder's bones
+	collision_layer = 4  # Weapon layer
+	collision_mask = 1   # Only collide with world (not character bones on layer 2)
+
+	print("Weapon ", weapon_name, " entered ragdoll mode - will drop on collision")
+
+func exit_ragdoll_mode():
+	"""Exit ragdoll mode - return to normal equipped state"""
+	if not is_equipped:
+		return
+
+	is_in_ragdoll_mode = false
+	should_monitor_collisions = false
+
+	# Return to normal equipped state
+	freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
+	freeze = true
+	gravity_scale = 0.0
+	collision_layer = 0  # No collisions when equipped normally
+	collision_mask = 0
+
+	print("Weapon ", weapon_name, " exited ragdoll mode")
+
+func _on_body_entered(body: Node):
+	"""Handle collision detection for ragdoll drop"""
+	# Only process if we're in ragdoll mode and monitoring collisions
+	if not should_monitor_collisions or not is_in_ragdoll_mode:
+		return
+
+	# Don't drop if we hit the holder's bones (PhysicalBone3D)
+	if body is PhysicalBone3D:
+		# Check if this is our holder's bone
+		if holder and _is_part_of_character(body, holder):
+			return  # Ignore collision with our own character's bones
+
+	# Hit something else (world, other objects) - drop the weapon!
+	print("Weapon ", weapon_name, " collided with ", body.name, " - dropping!")
+	_drop_from_ragdoll()
+
+func _is_part_of_character(bone: PhysicalBone3D, character: Node) -> bool:
+	"""Check if a PhysicalBone3D belongs to the character"""
+	var current = bone.get_parent()
+	while current:
+		if current == character:
+			return true
+		current = current.get_parent()
+	return false
+
+func _drop_from_ragdoll():
+	"""Drop weapon from hand during ragdoll"""
+	should_monitor_collisions = false  # Stop checking collisions
+	is_in_ragdoll_mode = false
+
+	# Store world transform before unparenting
+	var world_pos = global_position
+	var world_rot = global_rotation
+	var world_vel = linear_velocity  # Preserve velocity
+
+	# Detach from hand
+	if get_parent():
+		get_parent().remove_child(self)
+
+	# Add to world root
+	if holder and holder.get_tree():
+		holder.get_tree().root.add_child(self)
+
+	# Restore world transform
+	global_position = world_pos
+	global_rotation = world_rot
+
+	# Enable full physics
+	freeze_mode = RigidBody3D.FREEZE_MODE_STATIC
+	freeze = false
+	gravity_scale = 1.0
+	collision_layer = 4  # Weapon layer
+	collision_mask = 1   # Collide with world
+
+	# Apply velocity to continue motion
+	linear_velocity = world_vel
+
+	# Mark as unequipped
+	is_equipped = false
+	var old_holder = holder
+	holder = null
+
+	print("Weapon ", weapon_name, " dropped from ragdoll at ", global_position)

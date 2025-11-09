@@ -1007,7 +1007,7 @@ func _attach_weapon_to_ragdoll_hand():
 
 	print("Attaching weapon to ragdoll hand: ", physical_hand_bone.name)
 
-	# Remove weapon from character
+	# Remove weapon from character (BoneAttachment3D)
 	if equipped_weapon.get_parent():
 		equipped_weapon.get_parent().remove_child(equipped_weapon)
 
@@ -1017,67 +1017,57 @@ func _attach_weapon_to_ragdoll_hand():
 	# Position weapon relative to hand bone (using grip alignment)
 	if equipped_weapon.main_grip:
 		var grip_local_pos = equipped_weapon.main_grip.position
-		equipped_weapon.position = -grip_local_pos
-		equipped_weapon.rotation = Vector3.ZERO
+		# Apply rotation offset for proper weapon orientation
+		var rotation_offset = Basis().rotated(Vector3.RIGHT, deg_to_rad(-90))
+		equipped_weapon.transform.basis = rotation_offset
+		# Position so grip aligns with hand bone origin
+		var grip_offset_rotated = equipped_weapon.transform.basis * grip_local_pos
+		equipped_weapon.position = -grip_offset_rotated
 	else:
 		equipped_weapon.position = Vector3(0, -0.05, 0.1)
 		equipped_weapon.rotation = Vector3.ZERO
 
-	# Enable physics on weapon but don't let it fall
-	equipped_weapon.freeze = false
-	equipped_weapon.gravity_scale = 0.0  # No gravity while held
-	equipped_weapon.collision_layer = 4  # Weapon layer
-	equipped_weapon.collision_mask = 1 | 2  # Collide with world and ragdoll
+	# Enable weapon ragdoll mode - stays in hand until collision
+	equipped_weapon.enter_ragdoll_mode()
 
-	# Connect to collision signal to release on impact
-	if not equipped_weapon.body_entered.is_connected(_on_ragdoll_weapon_collision):
-		equipped_weapon.body_entered.connect(_on_ragdoll_weapon_collision)
-
-	print("Weapon attached to ragdoll hand")
+	print("Weapon attached to ragdoll hand and will drop on collision")
 
 func _detach_weapon_from_ragdoll_hand():
 	"""Restore weapon to normal attachment after ragdoll"""
 	if not equipped_weapon:
 		return
 
+	# Check if weapon was dropped during ragdoll
+	if not equipped_weapon.is_equipped:
+		print("Weapon was dropped during ragdoll, not restoring")
+		equipped_weapon = null
+		return
+
 	print("Detaching weapon from ragdoll hand")
 
-	# Disconnect collision signal
-	if equipped_weapon.body_entered.is_connected(_on_ragdoll_weapon_collision):
-		equipped_weapon.body_entered.disconnect(_on_ragdoll_weapon_collision)
+	# Exit weapon ragdoll mode
+	equipped_weapon.exit_ragdoll_mode()
 
 	# Remove from physical bone
 	if equipped_weapon.get_parent():
 		equipped_weapon.get_parent().remove_child(equipped_weapon)
 
-	# Re-add to character
-	add_child(equipped_weapon)
+	# Re-add to hand attachment (BoneAttachment3D)
+	if right_hand_attachment:
+		right_hand_attachment.add_child(equipped_weapon)
 
-	# Restore normal weapon state
-	equipped_weapon.freeze = true
-	equipped_weapon.gravity_scale = 0.0
-	equipped_weapon.collision_layer = 0
-	equipped_weapon.collision_mask = 0
+		# Restore grip-aligned transform
+		if equipped_weapon.main_grip:
+			var grip_local_pos = equipped_weapon.main_grip.position
+			var rotation_offset = Basis().rotated(Vector3.RIGHT, deg_to_rad(-90))
+			equipped_weapon.transform.basis = rotation_offset
+			var grip_offset_rotated = equipped_weapon.transform.basis * grip_local_pos
+			equipped_weapon.transform.origin = -grip_offset_rotated
+		else:
+			equipped_weapon.transform.origin = Vector3.ZERO
+			equipped_weapon.transform.basis = Basis().rotated(Vector3.RIGHT, deg_to_rad(-90))
 
 	print("Weapon restored to normal attachment")
-
-func _on_ragdoll_weapon_collision(body: Node):
-	"""Release weapon when it collides with something during ragdoll"""
-	if not ragdoll_enabled or not equipped_weapon:
-		return
-
-	# Ignore collisions with own ragdoll parts
-	if body is PhysicalBone3D and body.get_parent() == skeleton:
-		return
-
-	print("Weapon collision during ragdoll with: ", body.name, " - Releasing weapon")
-
-	# Disconnect signal
-	if equipped_weapon.body_entered.is_connected(_on_ragdoll_weapon_collision):
-		equipped_weapon.body_entered.disconnect(_on_ragdoll_weapon_collision)
-
-	# Drop the weapon
-	drop_weapon()
 
 func _attach_camera_to_ragdoll_head():
 	"""Attach FPS camera to physical head bone during ragdoll"""
