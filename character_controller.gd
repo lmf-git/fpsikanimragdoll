@@ -96,6 +96,7 @@ var camera_rotation: Vector2 = Vector2.ZERO  # Camera/head target rotation
 var body_rotation_y: float = 0.0  # Actual body Y rotation
 var head_bone_id: int = -1
 var neck_bone_id: int = -1
+var chest_bone_id: int = -1  # For weapon positioning anchor
 var right_hand_bone_id: int = -1
 var left_hand_bone_id: int = -1
 var original_head_pose: Transform3D
@@ -116,6 +117,11 @@ func _ready():
 		neck_bone_id = skeleton.find_bone(neck_bone_name)
 		right_hand_bone_id = skeleton.find_bone(right_hand_bone_name)
 		left_hand_bone_id = skeleton.find_bone(left_hand_bone_name)
+
+		# Find chest bone for weapon positioning anchor
+		chest_bone_id = skeleton.find_bone("characters3d.com___Upper_Chest")
+		if chest_bone_id < 0:
+			chest_bone_id = skeleton.find_bone("characters3d.com___Chest")
 
 		if head_bone_id >= 0:
 			original_head_pose = skeleton.get_bone_pose(head_bone_id)
@@ -1018,7 +1024,7 @@ func _update_weapon_position():
 	if not ik_targets_node:
 		return
 
-	# Get camera transform for positioning IK targets
+	# Get camera transform for weapon rotation
 	var active_camera = fps_camera if camera_mode == 0 else tps_camera
 	if not active_camera:
 		return
@@ -1040,17 +1046,29 @@ func _update_weapon_position():
 		WeaponState.AIMING:
 			target_offset = aim_weapon_offset
 
-	# STEP 1: Position right hand IK target relative to camera
+	# STEP 1: Position right hand IK target relative to BODY (chest bone), not camera
 	var right_hand_target = ik_targets_node.get_node_or_null("RightHandTarget")
 	if right_hand_target:
 		var base_offset = target_offset + current_sway
-		var target_pos = camera_transform.origin + camera_transform.basis.z * base_offset.z + camera_transform.basis.x * base_offset.x + camera_transform.basis.y * base_offset.y
+
+		# Use chest bone as anchor point for body-relative positioning
+		var anchor_transform: Transform3D
+		if chest_bone_id >= 0:
+			anchor_transform = skeleton.global_transform * skeleton.get_bone_global_pose(chest_bone_id)
+		else:
+			# Fallback to character position if no chest bone
+			anchor_transform = global_transform
+
+		# Position hand relative to body/chest, but rotate offset by camera yaw for aiming
+		# This keeps the weapon near the body but lets it follow camera look direction
+		var body_basis = Basis(Vector3.UP, camera_rotation.y)  # Only yaw, not pitch
+		var target_pos = anchor_transform.origin + body_basis * base_offset
 		right_hand_target.global_position = target_pos
 
 	# STEP 2: Weapon follows right hand bone (after IK has been applied)
 	var right_hand_transform = skeleton.global_transform * skeleton.get_bone_global_pose(right_hand_bone_id)
 
-	# Align weapon rotation to camera direction
+	# Align weapon rotation to camera direction for aiming
 	equipped_weapon.global_transform.basis = camera_transform.basis
 
 	# Position weapon so its grip aligns with the right hand bone
