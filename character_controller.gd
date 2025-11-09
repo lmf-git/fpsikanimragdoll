@@ -1025,14 +1025,15 @@ func _attach_weapon_to_ragdoll_hand():
 		equipped_weapon.position = -grip_offset_rotated
 
 		# Add weapon-specific offset (same as normal equip)
+		# In local space: X- = left, Z+ = forward
 		var weapon_offset = Vector3.ZERO
 		if equipped_weapon.weapon_type == Weapon.WeaponType.PISTOL:
-			weapon_offset = Vector3(-0.02, 0.0, -0.05)  # 2cm left, 5cm forward
+			weapon_offset = Vector3(-0.03, 0.0, 0.08)  # 3cm left, 8cm forward
 		elif equipped_weapon.weapon_type == Weapon.WeaponType.RIFLE:
-			weapon_offset = Vector3(-0.01, 0.0, -0.08)  # 1cm left, 8cm forward
+			weapon_offset = Vector3(-0.02, 0.0, 0.12)  # 2cm left, 12cm forward
 		equipped_weapon.position += weapon_offset
 	else:
-		equipped_weapon.position = Vector3(-0.02, -0.05, 0.05)  # Default pistol offset
+		equipped_weapon.position = Vector3(-0.03, 0.0, 0.08)  # Default pistol offset (forward and left)
 		equipped_weapon.rotation = Vector3.ZERO
 
 	# Enable weapon ragdoll mode - stays in hand until collision
@@ -1073,14 +1074,15 @@ func _detach_weapon_from_ragdoll_hand():
 			equipped_weapon.transform.origin = -grip_offset_rotated
 
 			# Apply weapon-specific offset
+			# In local space: X- = left, Z+ = forward
 			var weapon_offset = Vector3.ZERO
 			if equipped_weapon.weapon_type == Weapon.WeaponType.PISTOL:
-				weapon_offset = Vector3(-0.02, 0.0, -0.05)  # 2cm left, 5cm forward
+				weapon_offset = Vector3(-0.03, 0.0, 0.08)  # 3cm left, 8cm forward
 			elif equipped_weapon.weapon_type == Weapon.WeaponType.RIFLE:
-				weapon_offset = Vector3(-0.01, 0.0, -0.08)  # 1cm left, 8cm forward
+				weapon_offset = Vector3(-0.02, 0.0, 0.12)  # 2cm left, 12cm forward
 			equipped_weapon.transform.origin += weapon_offset
 		else:
-			equipped_weapon.transform.origin = Vector3(-0.02, 0.0, -0.05)  # Default pistol offset
+			equipped_weapon.transform.origin = Vector3(-0.03, 0.0, 0.08)  # Default pistol offset (forward and left)
 			equipped_weapon.transform.basis = Basis().rotated(Vector3.RIGHT, deg_to_rad(-90))
 
 	print("Weapon restored to normal attachment")
@@ -1384,7 +1386,7 @@ func _update_weapon_ik_targets():
 				var body_basis = Basis(Vector3.UP, body_rotation_y)
 
 				# Start from right hand target position
-				var right_hand_pos = right_hand_target.global_position if right_hand_target else global_position
+				var right_hand_pos: Vector3 = right_hand_target.global_position if right_hand_target else global_position
 
 				# Offset for assault rifle foregrip:
 				# - Forward (along weapon barrel): 0.35m in front of right hand

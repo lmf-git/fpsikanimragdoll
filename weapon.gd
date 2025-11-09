@@ -158,14 +158,15 @@ func equip(character: Node3D, hand_attachment: Node3D = null):
 		transform.origin = -grip_offset_rotated
 
 		# Add weapon-specific positioning offset for better feel
-		# Pistol should be slightly forward and to the left of hand center
+		# After -90° pitch rotation, weapon points forward along Z-
+		# In weapon's local space: X+ = right, X- = left, Z+ = forward (toward barrel), Z- = backward
 		var weapon_offset = Vector3.ZERO
 		if weapon_type == WeaponType.PISTOL:
-			# Forward (Z-), Left (X-) offset for pistol
-			weapon_offset = Vector3(-0.02, 0.0, -0.05)  # 2cm left, 5cm forward
+			# Move pistol forward and to the left in local space
+			weapon_offset = Vector3(-0.03, 0.0, 0.08)  # 3cm left, 8cm forward
 		elif weapon_type == WeaponType.RIFLE:
-			# Rifles might need different offset
-			weapon_offset = Vector3(-0.01, 0.0, -0.08)  # 1cm left, 8cm forward
+			# Rifles need more forward offset
+			weapon_offset = Vector3(-0.02, 0.0, 0.12)  # 2cm left, 12cm forward
 
 		# Apply offset in local space
 		transform.origin += weapon_offset
@@ -173,7 +174,7 @@ func equip(character: Node3D, hand_attachment: Node3D = null):
 		print("Weapon ", weapon_name, " equipped with grip offset: ", transform.origin, " (type offset applied)")
 	else:
 		# No grip point - just place at hand origin with rotation offset
-		transform.origin = Vector3(-0.02, 0.0, -0.05)  # Default pistol offset
+		transform.origin = Vector3(-0.03, 0.0, 0.08)  # Default pistol offset (forward and left)
 		transform.basis = Basis().rotated(Vector3.RIGHT, deg_to_rad(-90))
 		print("Weapon ", weapon_name, " equipped at hand origin (no grip point)")
 
