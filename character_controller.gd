@@ -82,8 +82,8 @@ var weapon_state: WeaponState = WeaponState.READY
 var is_weapon_sheathed: bool = false  # Toggle for sheathed state
 
 # Weapon positioning - skeleton-relative offsets
-@export var aim_weapon_offset: Vector3 = Vector3(0.0, 0.35, -1.1)  # Offset when aiming down sights (higher and more forward, centered)
-@export var ready_weapon_offset: Vector3 = Vector3(0.15, 0.1, -1.0)  # Offset when ready/moving (higher and more forward)
+@export var aim_weapon_offset: Vector3 = Vector3(0.08, 0.35, -1.3)  # Offset when aiming down sights (higher and more forward, slightly offset)
+@export var ready_weapon_offset: Vector3 = Vector3(0.2, 0.1, -1.2)  # Offset when ready/moving (higher and more forward)
 @export var sheathed_weapon_offset: Vector3 = Vector3(0.5, -0.6, 0.2)  # Offset when sheathed at side
 @export var weapon_transition_speed: float = 8.0  # Speed of state transitions
 
@@ -1340,6 +1340,9 @@ func _shoot_weapon():
 	if hit_result.hit:
 		var hit_node = hit_result.collider
 
+		# Create impact particle effect
+		_create_impact_effect(hit_result.position, hit_result.normal)
+
 		# Check if we hit a character with a skeleton (for partial ragdoll)
 		if hit_node is PhysicalBone3D:
 			var target_character = _find_parent_character(hit_node)
@@ -1389,6 +1392,50 @@ func _apply_recoil():
 	var random_yaw = randf_range(-1.0, 1.0)
 	current_recoil_rotation.y += random_yaw
 
+func _create_impact_effect(position: Vector3, normal: Vector3):
+	"""Create particle effect at bullet impact point"""
+	# Create CPUParticles3D for impact effect
+	var particles = CPUParticles3D.new()
+	get_tree().root.add_child(particles)
+	particles.global_position = position
+
+	# Orient particles away from surface
+	particles.look_at(position + normal, Vector3.UP)
+
+	# Configure particles
+	particles.emitting = true
+	particles.one_shot = true
+	particles.explosiveness = 1.0
+	particles.amount = 20
+	particles.lifetime = 0.5
+	particles.speed_scale = 2.0
+
+	# Emission shape - cone away from surface
+	particles.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+	particles.emission_sphere_radius = 0.05
+
+	# Particle properties
+	particles.direction = normal
+	particles.spread = 30.0
+	particles.initial_velocity_min = 2.0
+	particles.initial_velocity_max = 5.0
+	particles.gravity = Vector3(0, -9.8, 0)
+
+	# Visual properties
+	particles.scale_amount_min = 0.02
+	particles.scale_amount_max = 0.05
+	particles.color = Color(0.8, 0.7, 0.5, 1.0)  # Dust/debris color
+
+	# Fade out over lifetime
+	var gradient = Gradient.new()
+	gradient.add_point(0.0, Color(1, 1, 1, 1))
+	gradient.add_point(1.0, Color(1, 1, 1, 0))
+	particles.color_ramp = gradient
+
+	# Auto-delete after lifetime
+	var timer = get_tree().create_timer(particles.lifetime + 0.1)
+	timer.timeout.connect(func(): particles.queue_free())
+
 func _update_recoil(delta: float):
 	"""Update recoil recovery in _process"""
 	# Recover from recoil smoothly
@@ -1398,7 +1445,6 @@ func _update_recoil(delta: float):
 
 	# Apply recoil to camera rotation
 	if fps_camera or tps_camera:
-		var camera = fps_camera if camera_mode == 0 else tps_camera
 		# Apply recoil as additional rotation on top of normal camera rotation
 		camera_rotation.x += deg_to_rad(current_recoil_rotation.x) * delta * 2.0  # Gradual camera kick
 		camera_rotation.y += deg_to_rad(current_recoil_rotation.y) * delta * 2.0
@@ -1466,7 +1512,7 @@ func drop_weapon():
 	equipped_weapon.unequip()
 	equipped_weapon = null
 
-func _calculate_weapon_sway(delta: float, is_moving: bool) -> Vector3:
+func _calculate_weapon_sway(delta: float, moving: bool) -> Vector3:
 	"""Calculate procedural weapon sway based on movement and time"""
 	sway_time += delta * sway_speed
 
@@ -1475,7 +1521,7 @@ func _calculate_weapon_sway(delta: float, is_moving: bool) -> Vector3:
 	var sway_y = cos(sway_time * 0.8) * sway_amount * 0.5
 
 	# Extra sway when moving
-	if is_moving:
+	if moving:
 		sway_x *= movement_sway_multiplier
 		sway_y *= movement_sway_multiplier
 		# Add bob effect when moving
@@ -1503,8 +1549,8 @@ func _update_weapon_ik_targets():
 		return
 
 	# Check if character is moving for sway calculation
-	var is_moving = velocity.length() > 0.1
-	current_sway = _calculate_weapon_sway(get_process_delta_time(), is_moving)
+	var character_moving = velocity.length() > 0.1
+	current_sway = _calculate_weapon_sway(get_process_delta_time(), character_moving)
 
 	# Determine IK target offset based on weapon state
 	var target_offset = ready_weapon_offset

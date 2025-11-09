@@ -150,6 +150,7 @@ func equip(character: Node3D, hand_attachment: Node3D = null):
 		# Apply rotation offset first (e.g., rotate pistol to point forward)
 		var rotation_offset = Basis()
 		rotation_offset = rotation_offset.rotated(Vector3.RIGHT, deg_to_rad(-90))  # Pitch down
+		rotation_offset = rotation_offset.rotated(Vector3.UP, deg_to_rad(180))  # Yaw 180° to face correct direction
 		transform.basis = rotation_offset
 
 		# Position weapon so grip point is at hand origin (0,0,0 in hand local space)
