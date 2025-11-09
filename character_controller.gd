@@ -18,6 +18,8 @@ class_name CharacterController
 @export var skeleton: Skeleton3D
 @export var head_bone_name: String = "characters3d.com___Head"
 @export var neck_bone_name: String = "characters3d.com___Neck"
+@export var right_hand_bone_name: String = "characters3d.com___R_Hand"
+@export var left_hand_bone_name: String = "characters3d.com___L_Hand"
 
 # Head look and free look
 @export var head_look_enabled: bool = true
@@ -75,6 +77,8 @@ var camera_rotation: Vector2 = Vector2.ZERO  # Camera/head target rotation
 var body_rotation_y: float = 0.0  # Actual body Y rotation
 var head_bone_id: int = -1
 var neck_bone_id: int = -1
+var right_hand_bone_id: int = -1
+var left_hand_bone_id: int = -1
 var original_head_pose: Transform3D
 var original_neck_pose: Transform3D
 var mesh_instance: MeshInstance3D
@@ -94,12 +98,18 @@ func _ready():
 		print("Skeleton bone count: ", skeleton.get_bone_count())
 		print("Looking for head bone: ", head_bone_name)
 		print("Looking for neck bone: ", neck_bone_name)
+		print("Looking for right hand bone: ", right_hand_bone_name)
+		print("Looking for left hand bone: ", left_hand_bone_name)
 
 		head_bone_id = skeleton.find_bone(head_bone_name)
 		neck_bone_id = skeleton.find_bone(neck_bone_name)
+		right_hand_bone_id = skeleton.find_bone(right_hand_bone_name)
+		left_hand_bone_id = skeleton.find_bone(left_hand_bone_name)
 
 		print("Head bone ID: ", head_bone_id)
 		print("Neck bone ID: ", neck_bone_id)
+		print("Right hand bone ID: ", right_hand_bone_id)
+		print("Left hand bone ID: ", left_hand_bone_id)
 
 		if head_bone_id >= 0:
 			original_head_pose = skeleton.get_bone_pose(head_bone_id)
@@ -664,12 +674,8 @@ func pickup_weapon(weapon: Weapon):
 		equipped_weapon = weapon
 		nearby_weapon = null
 
-		# Position weapon at character hand (will be refined with IK later)
-		if skeleton and head_bone_id >= 0:
-			# Position at head for now (placeholder - will use hand bone + IK later)
-			var head_transform = skeleton.global_transform * skeleton.get_bone_global_pose(head_bone_id)
-			weapon.global_position = head_transform.origin + Vector3(0.3, -0.2, -0.3)
-			weapon.global_rotation = head_transform.basis.get_euler()
+		# Position weapon at right hand
+		_update_weapon_position()
 
 func drop_weapon():
 	"""Drop the currently equipped weapon"""
@@ -681,7 +687,55 @@ func drop_weapon():
 	equipped_weapon.unequip()
 	equipped_weapon = null
 
+func _update_weapon_position():
+	"""Update weapon position to follow hand bones with IK"""
+	if not equipped_weapon or not skeleton or right_hand_bone_id < 0:
+		return
+
+	# Get right hand bone global transform
+	var right_hand_transform = skeleton.global_transform * skeleton.get_bone_global_pose(right_hand_bone_id)
+
+	# Position weapon at right hand with offset
+	var weapon_offset = Vector3(0, 0, 0)  # Weapon grip offset from hand center
+	var weapon_rotation_offset = Vector3(deg_to_rad(-90), 0, 0)  # Rotate weapon to grip orientation
+
+	# Apply offsets based on weapon type
+	if equipped_weapon.weapon_type == Weapon.WeaponType.PISTOL:
+		weapon_offset = Vector3(0, -0.05, 0.1)
+	elif equipped_weapon.weapon_type == Weapon.WeaponType.RIFLE:
+		weapon_offset = Vector3(0, -0.05, 0.15)
+
+	# Set weapon position and rotation
+	equipped_weapon.global_position = right_hand_transform.origin + right_hand_transform.basis * weapon_offset
+
+	# Align weapon with hand rotation plus offset
+	var weapon_basis = right_hand_transform.basis
+	weapon_basis = weapon_basis.rotated(weapon_basis.x, weapon_rotation_offset.x)
+	weapon_basis = weapon_basis.rotated(weapon_basis.y, weapon_rotation_offset.y)
+	weapon_basis = weapon_basis.rotated(weapon_basis.z, weapon_rotation_offset.z)
+	equipped_weapon.global_transform.basis = weapon_basis
+
+	# For two-handed weapons, position left hand at secondary grip
+	if equipped_weapon.is_two_handed and left_hand_bone_id >= 0 and equipped_weapon.secondary_grip:
+		var secondary_grip_pos = equipped_weapon.secondary_grip.global_position
+
+		# Get left hand current pose
+		var left_hand_pose = skeleton.get_bone_pose(left_hand_bone_id)
+
+		# Calculate target position for left hand (simplified IK - just point towards grip)
+		var left_hand_global = skeleton.global_transform * skeleton.get_bone_global_pose(left_hand_bone_id)
+		var direction_to_grip = (secondary_grip_pos - left_hand_global.origin).normalized()
+
+		# Rotate left hand to point at grip (basic aim IK)
+		var target_basis = left_hand_pose.basis.looking_at(direction_to_grip, Vector3.UP)
+		left_hand_pose.basis = left_hand_pose.basis.slerp(target_basis, 0.5)
+		skeleton.set_bone_pose(left_hand_bone_id, left_hand_pose)
+
 func _process(_delta):
+	# Update weapon position to follow hand
+	if equipped_weapon:
+		_update_weapon_position()
+
 	# Update IK targets if enabled
 	if ik_enabled:
 		if left_hand_ik and left_hand_ik.is_running():
