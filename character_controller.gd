@@ -1617,8 +1617,8 @@ func _update_weapon_ik_targets():
 				# Offset for pistol support grip:
 				# - Down: 0.08m below right hand
 				# - Forward: 0.05m forward to wrap under trigger guard
-				# - Slightly left: 0.02m to avoid clipping with right hand
-				var support_grip_offset = Vector3(-0.02, -0.08, -0.05)  # Left, down, forward
+				# - Right: 0.03m to the right (crosses under) to create elbow bend
+				var support_grip_offset = Vector3(0.03, -0.08, -0.05)  # Right, down, forward
 
 				var left_hand_pos = right_hand_pos + body_basis * support_grip_offset
 				left_hand_target.global_position = left_hand_pos
