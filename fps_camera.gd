@@ -32,14 +32,17 @@ func _process(_delta):
 		# Get the global transform of the head bone
 		var head_global_transform = skeleton.global_transform * skeleton.get_bone_global_pose(head_bone_id)
 
-		# Position camera at head bone with offset
-		global_transform.origin = head_global_transform.origin + head_global_transform.basis * head_offset
-
 		# Get camera rotation from parent controller
 		var controller = get_parent()
 		if controller and controller.has_method("get"):
 			var cam_rotation = controller.get("camera_rotation")
 			if cam_rotation:
-				# Apply camera rotation
-				rotation.x = cam_rotation.x
-				rotation.y = cam_rotation.y
+				# Position camera at head bone with offset
+				global_transform.origin = head_global_transform.origin + head_global_transform.basis * head_offset
+
+				# Apply camera rotation (pitch and yaw)
+				# Reset rotation first to avoid accumulation
+				global_transform.basis = Basis()
+				# Apply yaw (Y rotation) then pitch (X rotation)
+				global_transform.basis = global_transform.basis.rotated(Vector3.UP, cam_rotation.y)
+				global_transform.basis = global_transform.basis.rotated(global_transform.basis.x, cam_rotation.x)

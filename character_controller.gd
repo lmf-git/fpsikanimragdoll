@@ -56,6 +56,9 @@ func _ready():
 		if head_bone_id >= 0:
 			original_head_pose = skeleton.get_bone_pose(head_bone_id)
 
+		# Find mesh instance for visibility control
+		mesh_instance = find_mesh_instance(skeleton)
+
 	# Set initial camera
 	_switch_camera(camera_mode)
 
@@ -64,6 +67,15 @@ func find_skeleton(node: Node) -> Skeleton3D:
 		return node
 	for child in node.get_children():
 		var result = find_skeleton(child)
+		if result:
+			return result
+	return null
+
+func find_mesh_instance(node: Node) -> MeshInstance3D:
+	if node is MeshInstance3D:
+		return node
+	for child in node.get_children():
+		var result = find_mesh_instance(child)
 		if result:
 			return result
 	return null
@@ -92,13 +104,21 @@ func _switch_camera(mode: int):
 		if mode == 0:  # FPS
 			fps_camera.current = true
 			tps_camera.current = false
+			# Use camera cull mask to hide character body in FPS
+			# Layer 1 = default, Layer 2 = character body
 			if mesh_instance:
-				mesh_instance.visible = false
+				# Move mesh to layer 2
+				mesh_instance.layers = 2
+			# FPS camera only sees layer 1 (not character body)
+			fps_camera.cull_mask = 1
 		else:  # TPS
 			fps_camera.current = false
 			tps_camera.current = true
 			if mesh_instance:
-				mesh_instance.visible = true
+				# Move mesh back to layer 1
+				mesh_instance.layers = 1
+			# TPS camera sees all layers
+			tps_camera.cull_mask = 0xFFFFF
 
 func _physics_process(delta):
 	if ragdoll_enabled:
