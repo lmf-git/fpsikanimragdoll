@@ -208,11 +208,11 @@ func _create_ragdoll_bones():
 
 		# Larger shapes for major bones
 		if bone_suffix in ["Hips", "Spine", "Chest", "Upper_Chest"]:
-			radius = 0.12
-			height = 0.25
+			radius = 0.18
+			height = 0.35
 		elif bone_suffix in ["Head"]:
 			radius = 0.15
-			height = 0.2
+			height = 0.25
 		elif bone_suffix in ["Upper_Arm", "Lower_Arm", "Upper_Leg", "Lower_Leg"]:
 			radius = 0.06
 			height = max(bone_length, 0.2)
@@ -231,6 +231,12 @@ func _create_ragdoll_bones():
 		# Add collision shape
 		var collision_shape = CollisionShape3D.new()
 		collision_shape.shape = shape
+
+		# Adjust collision shape position for specific bones
+		if bone_suffix in ["Head"]:
+			# Move head collider up slightly
+			collision_shape.position = Vector3(0, 0.05, 0)
+
 		physical_bone.add_child(collision_shape)
 		collision_shape.owner = physical_bone
 
