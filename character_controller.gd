@@ -350,14 +350,11 @@ func _create_ragdoll_bones():
 			debug_mesh.owner = physical_bone
 
 		# CRITICAL: Configure joint to connect to parent bone
-		# Use NONE for torso (fixed), HINGE for knees/elbows, CONE for everything else
+		# Use HINGE for knees/elbows, CONE for everything else
+		# Don't use NONE - it disconnects bones completely!
 		var use_hinge = bone_suffix in ["Lower_Leg", "L_Lower_Leg", "R_Lower_Leg", "Lower_Arm", "L_Lower_Arm", "R_Lower_Arm"]
-		var use_none = bone_suffix in ["Hips", "Spine", "Chest", "Upper_Chest", "Neck", "Head", "Shoulder", "L_Shoulder", "R_Shoulder"]
 
-		if use_none:
-			# Fixed joint - no movement at all
-			physical_bone.joint_type = PhysicalBone3D.JOINT_TYPE_NONE
-		elif use_hinge:
+		if use_hinge:
 			physical_bone.joint_type = PhysicalBone3D.JOINT_TYPE_HINGE
 		else:
 			physical_bone.joint_type = PhysicalBone3D.JOINT_TYPE_CONE
@@ -452,10 +449,7 @@ func _create_ragdoll_bones():
 			bias = 0.998
 
 		# Apply limits based on joint type
-		if use_none:
-			# No joint constraints needed for NONE type - bone is fixed to parent
-			pass
-		elif use_hinge:
+		if use_hinge:
 			# Hinge joints use different constraint properties
 			physical_bone.set("joint_constraints/angular_limit_lower", -swing_limit)
 			physical_bone.set("joint_constraints/angular_limit_upper", 0)  # Only bend one way
@@ -466,10 +460,21 @@ func _create_ragdoll_bones():
 			physical_bone.set("joint_constraints/twist_span", twist_limit)
 
 		# EXTREMELY stiff joints - nearly rigid skeleton
-		physical_bone.set("joint_constraints/bias", bias)
-		physical_bone.set("joint_constraints/damping", damping)
-		physical_bone.set("joint_constraints/softness", 0.0)  # Completely rigid, zero springiness
-		physical_bone.set("joint_constraints/relaxation", 1.0)  # Maximum stability
+		# For torso bones, apply maximum constraint enforcement
+		if bone_suffix in ["Hips", "Spine", "Chest", "Upper_Chest", "Neck", "Head", "Shoulder", "L_Shoulder", "R_Shoulder"]:
+			# Maximum constraint enforcement for torso - absolutely no give
+			physical_bone.set("joint_constraints/bias", 1.0)
+			physical_bone.set("joint_constraints/damping", 1.0)
+			physical_bone.set("joint_constraints/softness", 0.0)
+			physical_bone.set("joint_constraints/relaxation", 1.0)
+			physical_bone.set("joint_constraints/erp", 1.0)  # Error reduction parameter - maximum
+			physical_bone.set("joint_constraints/cfm", 0.0)  # Constraint force mixing - zero (rigid)
+		else:
+			# Standard stiffness for other bones
+			physical_bone.set("joint_constraints/bias", bias)
+			physical_bone.set("joint_constraints/damping", damping)
+			physical_bone.set("joint_constraints/softness", 0.0)
+			physical_bone.set("joint_constraints/relaxation", 1.0)
 
 		# Physics properties - add damping to resist all motion
 		physical_bone.mass = 1.0
@@ -793,6 +798,19 @@ func drop_weapon():
 
 	print("Dropping weapon: ", equipped_weapon.weapon_name)
 
+	# Restore IK targets to default positions
+	var ik_targets_node = get_node_or_null("IKTargets")
+	if ik_targets_node:
+		# Reset left hand to default
+		var left_hand_target = ik_targets_node.get_node_or_null("LeftHandTarget")
+		if left_hand_target:
+			left_hand_target.global_position = global_position + Vector3(-0.5, 1.2, 0.3)
+
+		# Reset right hand to default
+		var right_hand_target = ik_targets_node.get_node_or_null("RightHandTarget")
+		if right_hand_target:
+			right_hand_target.global_position = global_position + Vector3(0.5, 1.2, 0.3)
+
 	equipped_weapon.unequip()
 	equipped_weapon = null
 
@@ -824,20 +842,14 @@ func _update_weapon_position():
 	weapon_basis = weapon_basis.rotated(weapon_basis.z, weapon_rotation_offset.z)
 	equipped_weapon.global_transform.basis = weapon_basis
 
-	# Update IK targets to weapon grip points
+	# Update IK targets - ONLY left hand for two-handed weapons
+	# Don't update right hand IK - it creates a feedback loop since weapon follows right hand
 	var ik_targets_node = get_node_or_null("IKTargets")
-	if ik_targets_node:
-		# Right hand IK target to main grip
-		if equipped_weapon.main_grip:
-			var right_hand_target = ik_targets_node.get_node_or_null("RightHandTarget")
-			if right_hand_target:
-				right_hand_target.global_position = equipped_weapon.main_grip.global_position
-
-		# Left hand IK target to secondary grip (for two-handed weapons)
-		if equipped_weapon.is_two_handed and equipped_weapon.secondary_grip:
-			var left_hand_target = ik_targets_node.get_node_or_null("LeftHandTarget")
-			if left_hand_target:
-				left_hand_target.global_position = equipped_weapon.secondary_grip.global_position
+	if ik_targets_node and equipped_weapon.is_two_handed and equipped_weapon.secondary_grip:
+		# Left hand IK target to secondary grip (for two-handed weapons only)
+		var left_hand_target = ik_targets_node.get_node_or_null("LeftHandTarget")
+		if left_hand_target:
+			left_hand_target.global_position = equipped_weapon.secondary_grip.global_position
 
 func _process(_delta):
 	# Update weapon position to follow hand
