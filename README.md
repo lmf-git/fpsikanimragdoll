@@ -53,11 +53,16 @@ A complete character controller system for Godot 4.5 featuring:
 | W/A/S/D | Move |
 | Space | Jump |
 | Shift | Sprint |
-| Mouse | Look around |
-| V or I | Toggle Camera (FPS/TPS) |
-| O | Force Third Person Camera |
+| Mouse | Look around (Free Look) |
+| O | Toggle Camera (FPS/TPS) |
+| I | Toggle IK On/Off |
 | R | Toggle Ragdoll |
 | ESC | Release/Capture mouse |
+
+**Tips:**
+- Mouse look uses free look - head turns before body
+- IK mode toggles inverse kinematics for limbs
+- Ragdoll requires physical bones (run `setup_physical_bones.gd` in editor)
 
 ## Project Structure
 

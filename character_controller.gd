@@ -108,10 +108,11 @@ func _input(event):
 	if event.is_action_pressed("toggle_camera"):
 		camera_mode = (camera_mode + 1) % 2
 		_switch_camera(camera_mode)
+		print("Camera mode: ", "FPS" if camera_mode == 0 else "TPS")
 
-	if event.is_action_pressed("force_tps"):
-		camera_mode = 1  # Force TPS mode
-		_switch_camera(camera_mode)
+	if event.is_action_pressed("toggle_ik"):
+		ik_enabled = !ik_enabled
+		print("IK enabled: ", ik_enabled)
 
 	if event.is_action_pressed("toggle_ragdoll"):
 		toggle_ragdoll()
@@ -234,23 +235,56 @@ func _update_head_look(delta):
 	skeleton.set_bone_pose(head_bone_id, head_pose)
 
 func toggle_ragdoll():
+	print("=== Ragdoll Toggle Debug ===")
+	print("Physical skeleton: ", physical_skeleton)
+
+	if not skeleton:
+		print("ERROR: No skeleton found!")
+		return
+
+	# Try to find physical bones
+	var physical_bones = []
+	for child in skeleton.get_children():
+		if child is PhysicalBone3D:
+			physical_bones.append(child)
+		if child is PhysicalBoneSimulator3D:
+			physical_skeleton = child
+			print("Found PhysicalBoneSimulator3D: ", child.name)
+
+	print("Found ", physical_bones.size(), " physical bones")
+
 	if not physical_skeleton:
-		print("Ragdoll not available: PhysicalBoneSimulator3D not found!")
-		print("Run setup_physical_bones.gd editor script to create physical bones.")
+		print("ERROR: PhysicalBoneSimulator3D not found!")
+		print("Creating PhysicalBoneSimulator3D...")
+		physical_skeleton = PhysicalBoneSimulator3D.new()
+		physical_skeleton.name = "PhysicalBoneSimulator3D"
+		skeleton.add_child(physical_skeleton)
+		print("PhysicalBoneSimulator3D created")
+
+	if physical_bones.size() == 0:
+		print("ERROR: No PhysicalBone3D nodes found!")
+		print("Please run setup_physical_bones.gd editor script to create physical bones.")
+		print("Or use Skeleton3D -> Create Physical Skeleton in the editor")
 		ragdoll_enabled = false
 		return
 
 	ragdoll_enabled = !ragdoll_enabled
 
 	if ragdoll_enabled:
-		print("Ragdoll enabled")
+		print("ENABLING RAGDOLL - Starting physics simulation")
 		physical_skeleton.physical_bones_start_simulation()
 		# Disable character collision and control
+		collision_layer = 0
+		collision_mask = 0
 		set_physics_process(false)
 	else:
-		print("Ragdoll disabled")
+		print("DISABLING RAGDOLL - Stopping physics simulation")
 		physical_skeleton.physical_bones_stop_simulation()
+		collision_layer = 1
+		collision_mask = 1
 		set_physics_process(true)
+
+	print("Ragdoll enabled: ", ragdoll_enabled)
 
 func _process(_delta):
 	# Update IK targets if enabled

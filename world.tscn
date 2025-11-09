@@ -109,15 +109,20 @@ surface_material_override/0 = SubResource("Material_box")
 [node name="HelpLabel" type="Label" parent="UI"]
 offset_left = 10.0
 offset_top = 10.0
-offset_right = 600.0
-offset_bottom = 200.0
+offset_right = 650.0
+offset_bottom = 300.0
 label_settings = SubResource("LabelSettings_1")
 text = "CONTROLS:
 WASD - Move
 Space - Jump
 Shift - Sprint
-Mouse - Look around
-V or I - Toggle Camera (FPS/TPS)
-O - Force Third Person Camera
+Mouse - Look around (Free Look)
+O - Toggle Camera (FPS/TPS)
+I - Toggle IK
 R - Toggle Ragdoll
-ESC - Release mouse"
+ESC - Release mouse
+
+TIPS:
+- Head turns before body (Free Look)
+- Press R to enable ragdoll physics
+- Press I to toggle IK on/off"

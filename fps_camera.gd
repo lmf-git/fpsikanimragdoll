@@ -47,12 +47,16 @@ func _physics_process(_delta):
 		# Fallback: position relative to controller
 		global_transform.origin = controller.global_position + Vector3(0, 1.6, 0)
 
-	# Apply camera rotation independently
-	# Start with identity basis
-	var camera_basis = Basis()
-	# Apply yaw (horizontal rotation around world UP)
-	camera_basis = camera_basis.rotated(Vector3.UP, cam_rotation.y)
-	# Apply pitch (vertical rotation around local X axis)
-	camera_basis = camera_basis.rotated(camera_basis.x.normalized(), cam_rotation.x)
+	# Apply camera rotation
+	# In Godot, cameras look along -Z by default
+	# We need to apply yaw then pitch
+	var camera_transform = Transform3D()
 
-	global_transform.basis = camera_basis
+	# Apply yaw (rotate around Y axis)
+	camera_transform = camera_transform.rotated(Vector3.UP, cam_rotation.y)
+
+	# Apply pitch (rotate around the local right axis which is X)
+	camera_transform = camera_transform.rotated(camera_transform.basis.x, cam_rotation.x)
+
+	# Set the camera's basis
+	global_transform.basis = camera_transform.basis
