@@ -31,6 +31,10 @@ head_rotation_speed = 10.0
 body_rotation_speed = 8.0
 free_look_threshold = 45.0
 ik_enabled = true
+left_hand_ik = NodePath("Model/Skeleton3D/LeftHandIK")
+right_hand_ik = NodePath("Model/Skeleton3D/RightHandIK")
+left_foot_ik = NodePath("Model/Skeleton3D/LeftFootIK")
+right_foot_ik = NodePath("Model/Skeleton3D/RightFootIK")
 ragdoll_enabled = false
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
@@ -39,6 +43,34 @@ shape = SubResource("CapsuleShape3D_1")
 
 [node name="Model" parent="." instance=ExtResource("1")]
 transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0, 0)
+
+[node name="LeftHandIK" type="SkeletonIK3D" parent="Model/Skeleton3D"]
+root_bone = "characters3d.com___L_Shoulder"
+tip_bone = "characters3d.com___L_Hand"
+target_node = NodePath("../../../IKTargets/LeftHandTarget")
+interpolation = 0.5
+max_iterations = 10
+
+[node name="RightHandIK" type="SkeletonIK3D" parent="Model/Skeleton3D"]
+root_bone = "characters3d.com___R_Shoulder"
+tip_bone = "characters3d.com___R_Hand"
+target_node = NodePath("../../../IKTargets/RightHandTarget")
+interpolation = 0.5
+max_iterations = 10
+
+[node name="LeftFootIK" type="SkeletonIK3D" parent="Model/Skeleton3D"]
+root_bone = "characters3d.com___L_Upper_Leg"
+tip_bone = "characters3d.com___L_Foot"
+target_node = NodePath("../../../IKTargets/LeftFootTarget")
+interpolation = 0.5
+max_iterations = 10
+
+[node name="RightFootIK" type="SkeletonIK3D" parent="Model/Skeleton3D"]
+root_bone = "characters3d.com___R_Upper_Leg"
+tip_bone = "characters3d.com___R_Foot"
+target_node = NodePath("../../../IKTargets/RightFootTarget")
+interpolation = 0.5
+max_iterations = 10
 
 [node name="FPSCamera" type="Camera3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.6, 0)

@@ -136,6 +136,15 @@ func _ready():
 	print("TPS Camera: ", tps_camera)
 	print("Initial camera mode: ", camera_mode)
 
+	# Print IK setup
+	print("\n=== IK Setup ===")
+	print("IK enabled: ", ik_enabled)
+	print("Left hand IK: ", left_hand_ik)
+	print("Right hand IK: ", right_hand_ik)
+	print("Left foot IK: ", left_foot_ik)
+	print("Right foot IK: ", right_foot_ik)
+	print("=== End IK Setup ===\n")
+
 	# Auto-create ragdoll if enabled
 	if auto_create_ragdoll and skeleton:
 		_create_ragdoll_bones()
@@ -747,13 +756,23 @@ func _process(_delta):
 	if equipped_weapon:
 		_update_weapon_position()
 
-	# Update IK targets if enabled
+	# Update IK - start() applies the IK each frame
 	if ik_enabled:
-		if left_hand_ik and left_hand_ik.is_running():
+		if left_hand_ik:
 			left_hand_ik.start()
-		if right_hand_ik and right_hand_ik.is_running():
+		if right_hand_ik:
 			right_hand_ik.start()
-		if left_foot_ik and left_foot_ik.is_running():
+		if left_foot_ik:
 			left_foot_ik.start()
-		if right_foot_ik and right_foot_ik.is_running():
+		if right_foot_ik:
 			right_foot_ik.start()
+	else:
+		# Stop IK when disabled
+		if left_hand_ik:
+			left_hand_ik.stop()
+		if right_hand_ik:
+			right_hand_ik.stop()
+		if left_foot_ik:
+			left_foot_ik.stop()
+		if right_foot_ik:
+			right_foot_ik.stop()
