@@ -284,86 +284,86 @@ func _create_ragdoll_bones():
 		var damping = 0.95  # Very high damping = very stiff
 		var bias = 0.95     # Very high bias = rigid response
 
-		# Ultra-specific constraints - very tight!
+		# Ultra-specific constraints - EXTREMELY tight, near-rigid!
 		if bone_suffix in ["Hips"]:
-			# Hips - nearly locked (root)
-			swing_limit = deg_to_rad(0.5)
-			twist_limit = deg_to_rad(0.5)
-			damping = 0.999
-			bias = 0.999
+			# Hips - completely locked (root)
+			swing_limit = deg_to_rad(0.1)
+			twist_limit = deg_to_rad(0.1)
+			damping = 0.9999
+			bias = 0.9999
 		elif bone_suffix in ["Spine", "Chest", "Upper_Chest"]:
-			# Spine/torso - almost completely locked
+			# Spine/torso - completely locked
+			swing_limit = deg_to_rad(0.2)
+			twist_limit = deg_to_rad(0.1)
+			damping = 0.9995
+			bias = 0.9995
+		elif bone_suffix in ["Neck"]:
+			# Neck - extremely restricted rotation
 			swing_limit = deg_to_rad(1)
 			twist_limit = deg_to_rad(0.5)
 			damping = 0.995
 			bias = 0.995
-		elif bone_suffix in ["Neck"]:
-			# Neck - very restricted rotation
-			swing_limit = deg_to_rad(5)
-			twist_limit = deg_to_rad(2)
-			damping = 0.98
-			bias = 0.98
 		elif bone_suffix in ["Head"]:
-			# Head - very minimal rotation
+			# Head - extremely minimal rotation
+			swing_limit = deg_to_rad(0.5)
+			twist_limit = deg_to_rad(0.2)
+			damping = 0.995
+			bias = 0.995
+		elif "Shoulder" in bone_suffix:
+			# Shoulders - completely locked
+			swing_limit = deg_to_rad(0.5)
+			twist_limit = deg_to_rad(0.2)
+			damping = 0.998
+			bias = 0.998
+		elif bone_suffix in ["Upper_Leg", "L_Upper_Leg", "R_Upper_Leg"]:
+			# Upper legs - very restricted hip
 			swing_limit = deg_to_rad(3)
-			twist_limit = deg_to_rad(1)
+			twist_limit = deg_to_rad(0.5)
 			damping = 0.98
 			bias = 0.98
-		elif "Shoulder" in bone_suffix:
-			# Shoulders - almost locked
-			swing_limit = deg_to_rad(5)
-			twist_limit = deg_to_rad(2)
-			damping = 0.95
-			bias = 0.95
-		elif bone_suffix in ["Upper_Leg", "L_Upper_Leg", "R_Upper_Leg"]:
-			# Upper legs - restricted hip
-			swing_limit = deg_to_rad(15)
-			twist_limit = deg_to_rad(3)
-			damping = 0.90
-			bias = 0.90
 		elif bone_suffix in ["Lower_Leg", "L_Lower_Leg", "R_Lower_Leg"]:
 			# HINGE: Lower legs (knees) - one direction only
 			# For hinge joints, only swing matters
 			swing_limit = deg_to_rad(120)  # Can bend backward
 			twist_limit = deg_to_rad(0)    # No twist on hinge
-			damping = 0.88
-			bias = 0.88
+			damping = 0.95
+			bias = 0.95
 		elif bone_suffix in ["Foot", "L_Foot", "R_Foot"]:
-			# Feet/ankles - very restricted
+			# Feet/ankles - extremely restricted
+			swing_limit = deg_to_rad(0.5)
+			twist_limit = deg_to_rad(0.2)
+			damping = 0.998
+			bias = 0.998
+		elif bone_suffix in ["Toes", "L_Toes", "R_Toes"]:
+			# Toes - almost locked
+			swing_limit = deg_to_rad(1)
+			twist_limit = deg_to_rad(0.1)
+			damping = 0.998
+			bias = 0.998
+		elif bone_suffix in ["Upper_Arm", "L_Upper_Arm", "R_Upper_Arm"]:
+			# Upper arms - very restricted shoulder movement
 			swing_limit = deg_to_rad(3)
 			twist_limit = deg_to_rad(1)
 			damping = 0.98
 			bias = 0.98
-		elif bone_suffix in ["Toes", "L_Toes", "R_Toes"]:
-			# Toes - very limited
-			swing_limit = deg_to_rad(20)
-			twist_limit = deg_to_rad(1)
-			damping = 0.92
-			bias = 0.92
-		elif bone_suffix in ["Upper_Arm", "L_Upper_Arm", "R_Upper_Arm"]:
-			# Upper arms - moderate shoulder movement
-			swing_limit = deg_to_rad(25)
-			twist_limit = deg_to_rad(10)
-			damping = 0.88
-			bias = 0.88
 		elif bone_suffix in ["Lower_Arm", "L_Lower_Arm", "R_Lower_Arm"]:
 			# HINGE: Lower arms (elbows) - one direction only
 			swing_limit = deg_to_rad(140)  # Can bend
 			twist_limit = deg_to_rad(0)    # No twist on hinge
-			damping = 0.88
-			bias = 0.88
+			damping = 0.95
+			bias = 0.95
 		elif bone_suffix in ["Hand", "L_Hand", "R_Hand"]:
-			# Hands/wrists - very restricted
-			swing_limit = deg_to_rad(5)
-			twist_limit = deg_to_rad(2)
-			damping = 0.98
-			bias = 0.98
+			# Hands/wrists - extremely restricted
+			swing_limit = deg_to_rad(0.5)
+			twist_limit = deg_to_rad(0.2)
+			damping = 0.998
+			bias = 0.998
 		elif "Finger" in bone_suffix or "Thumb" in bone_suffix or "Index" in bone_suffix or "Middle" in bone_suffix or "Ring" in bone_suffix or "Little" in bone_suffix:
-			# Fingers - small, controlled
-			swing_limit = deg_to_rad(30)
-			twist_limit = deg_to_rad(1)
-			damping = 0.93
-			bias = 0.93
+			# Fingers - almost locked
+			swing_limit = deg_to_rad(2)
+			twist_limit = deg_to_rad(0.1)
+			damping = 0.998
+			bias = 0.998
 
 		# Apply limits based on joint type
 		if use_hinge:
@@ -379,13 +379,15 @@ func _create_ragdoll_bones():
 		# EXTREMELY stiff joints - nearly rigid skeleton
 		physical_bone.set("joint_constraints/bias", bias)
 		physical_bone.set("joint_constraints/damping", damping)
-		physical_bone.set("joint_constraints/softness", 0.05)  # Very rigid, not springy
-		physical_bone.set("joint_constraints/relaxation", 0.95)  # High stability
+		physical_bone.set("joint_constraints/softness", 0.01)  # Extremely rigid, not springy
+		physical_bone.set("joint_constraints/relaxation", 0.99)  # Very high stability
 
-		# Physics properties
+		# Physics properties - add damping to resist all motion
 		physical_bone.mass = 1.0
-		physical_bone.friction = 0.8
+		physical_bone.friction = 1.0  # Maximum friction
 		physical_bone.bounce = 0.0
+		physical_bone.linear_damp = 0.5  # Resist linear movement
+		physical_bone.angular_damp = 0.9  # Heavy resistance to rotation
 
 		# CRITICAL: Set collision layers and masks for proper physics
 		physical_bone.collision_layer = 2  # Layer 2 for ragdoll parts
