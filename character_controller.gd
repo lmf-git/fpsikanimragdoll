@@ -1023,8 +1023,16 @@ func _attach_weapon_to_ragdoll_hand():
 		# Position so grip aligns with hand bone origin
 		var grip_offset_rotated = equipped_weapon.transform.basis * grip_local_pos
 		equipped_weapon.position = -grip_offset_rotated
+
+		# Add weapon-specific offset (same as normal equip)
+		var weapon_offset = Vector3.ZERO
+		if equipped_weapon.weapon_type == Weapon.WeaponType.PISTOL:
+			weapon_offset = Vector3(-0.02, 0.0, -0.05)  # 2cm left, 5cm forward
+		elif equipped_weapon.weapon_type == Weapon.WeaponType.RIFLE:
+			weapon_offset = Vector3(-0.01, 0.0, -0.08)  # 1cm left, 8cm forward
+		equipped_weapon.position += weapon_offset
 	else:
-		equipped_weapon.position = Vector3(0, -0.05, 0.1)
+		equipped_weapon.position = Vector3(-0.02, -0.05, 0.05)  # Default pistol offset
 		equipped_weapon.rotation = Vector3.ZERO
 
 	# Enable weapon ragdoll mode - stays in hand until collision
@@ -1063,8 +1071,16 @@ func _detach_weapon_from_ragdoll_hand():
 			equipped_weapon.transform.basis = rotation_offset
 			var grip_offset_rotated = equipped_weapon.transform.basis * grip_local_pos
 			equipped_weapon.transform.origin = -grip_offset_rotated
+
+			# Apply weapon-specific offset
+			var weapon_offset = Vector3.ZERO
+			if equipped_weapon.weapon_type == Weapon.WeaponType.PISTOL:
+				weapon_offset = Vector3(-0.02, 0.0, -0.05)  # 2cm left, 5cm forward
+			elif equipped_weapon.weapon_type == Weapon.WeaponType.RIFLE:
+				weapon_offset = Vector3(-0.01, 0.0, -0.08)  # 1cm left, 8cm forward
+			equipped_weapon.transform.origin += weapon_offset
 		else:
-			equipped_weapon.transform.origin = Vector3.ZERO
+			equipped_weapon.transform.origin = Vector3(-0.02, 0.0, -0.05)  # Default pistol offset
 			equipped_weapon.transform.basis = Basis().rotated(Vector3.RIGHT, deg_to_rad(-90))
 
 	print("Weapon restored to normal attachment")
