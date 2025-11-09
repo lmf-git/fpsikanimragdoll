@@ -373,43 +373,49 @@ func _create_ragdoll_bones():
 		var damping = 0.95  # Very high damping = very stiff
 		var bias = 0.95     # Very high bias = rigid response
 
-		# Ultra-specific constraints - COMPLETELY RIGID UPPER BODY!
+		# Ultra-specific constraints - allow natural bending but prevent excessive movement
 		if bone_suffix in ["Hips"]:
-			# Hips/pelvis - ZERO MOVEMENT (completely locked)
-			swing_limit = 0.0
-			twist_limit = 0.0
-			damping = 1.0
-			bias = 1.0
-		elif bone_suffix in ["Spine", "Chest", "Upper_Chest"]:
-			# Spine/torso - ZERO MOVEMENT (completely locked)
-			swing_limit = 0.0
-			twist_limit = 0.0
-			damping = 1.0
-			bias = 1.0
+			# Hips/pelvis - very restricted but allow slight bend for natural rest
+			swing_limit = deg_to_rad(15)  # Small amount for natural posing
+			twist_limit = deg_to_rad(5)   # Minimal twist
+			damping = 0.98
+			bias = 0.98
+		elif bone_suffix in ["Spine"]:
+			# Lower spine - allow some flex for natural bending
+			swing_limit = deg_to_rad(20)  # Allow forward/back bend
+			twist_limit = deg_to_rad(10)  # Some twist for natural movement
+			damping = 0.95
+			bias = 0.95
+		elif bone_suffix in ["Chest", "Upper_Chest"]:
+			# Upper torso - moderate restriction
+			swing_limit = deg_to_rad(15)  # Less flex than lower spine
+			twist_limit = deg_to_rad(8)   # Limited twist
+			damping = 0.96
+			bias = 0.96
 		elif bone_suffix in ["Neck"]:
-			# Neck - ZERO MOVEMENT (completely locked)
-			swing_limit = 0.0
-			twist_limit = 0.0
-			damping = 1.0
-			bias = 1.0
+			# Neck - allow natural head drooping
+			swing_limit = deg_to_rad(25)  # Can bend forward/back/side
+			twist_limit = deg_to_rad(15)  # Some twist
+			damping = 0.92
+			bias = 0.92
 		elif bone_suffix in ["Head"]:
-			# Head - ZERO MOVEMENT (completely locked)
-			swing_limit = 0.0
-			twist_limit = 0.0
-			damping = 1.0
-			bias = 1.0
+			# Head - more freedom for natural resting
+			swing_limit = deg_to_rad(30)  # Can loll naturally
+			twist_limit = deg_to_rad(20)  # Some rotation
+			damping = 0.90
+			bias = 0.90
 		elif "Shoulder" in bone_suffix:
-			# Shoulders - ZERO MOVEMENT (completely locked)
-			swing_limit = 0.0
-			twist_limit = 0.0
-			damping = 1.0
-			bias = 1.0
+			# Shoulders - very restricted
+			swing_limit = deg_to_rad(5)   # Minimal movement
+			twist_limit = deg_to_rad(2)   # Almost no twist
+			damping = 0.98
+			bias = 0.98
 		elif bone_suffix in ["Upper_Leg", "L_Upper_Leg", "R_Upper_Leg"]:
-			# Upper legs - EXTREMELY restricted hip to prevent body spinning
-			swing_limit = deg_to_rad(0.5)  # Almost locked
-			twist_limit = deg_to_rad(0)    # No twist at all
-			damping = 1.0
-			bias = 1.0
+			# Upper legs - allow natural hip movement but keep controlled
+			swing_limit = deg_to_rad(60)   # Can swing forward/back naturally
+			twist_limit = deg_to_rad(20)   # Some twist at hip
+			damping = 0.90
+			bias = 0.90
 		elif bone_suffix in ["Lower_Leg", "L_Lower_Leg", "R_Lower_Leg"]:
 			# HINGE: Lower legs (knees) - one direction only
 			# For hinge joints, only swing matters
@@ -430,11 +436,11 @@ func _create_ragdoll_bones():
 			damping = 0.998
 			bias = 0.998
 		elif bone_suffix in ["Upper_Arm", "L_Upper_Arm", "R_Upper_Arm"]:
-			# Upper arms - very restricted shoulder movement
-			swing_limit = deg_to_rad(3)
-			twist_limit = deg_to_rad(1)
-			damping = 0.98
-			bias = 0.98
+			# Upper arms - allow natural shoulder movement
+			swing_limit = deg_to_rad(80)   # Can swing up/down/side
+			twist_limit = deg_to_rad(30)   # Some rotation at shoulder
+			damping = 0.85
+			bias = 0.85
 		elif bone_suffix in ["Lower_Arm", "L_Lower_Arm", "R_Lower_Arm"]:
 			# HINGE: Lower arms (elbows) - one direction only
 			swing_limit = deg_to_rad(140)  # Can bend
@@ -504,11 +510,7 @@ func _create_ragdoll_bones():
 			physical_bone.linear_damp = 0.8  # Strong resistance to linear movement
 			physical_bone.angular_damp = 0.99  # Extremely heavy resistance to rotation
 
-		# Lock rotation axes for torso/head/neck to completely prevent spinning
-		if bone_suffix in ["Hips", "Spine", "Chest", "Upper_Chest", "Neck", "Head"]:
-			physical_bone.axis_lock_angular_x = true
-			physical_bone.axis_lock_angular_y = true
-			physical_bone.axis_lock_angular_z = true
+		# No axis locks needed - joint limits and damping provide control
 
 		# CRITICAL: Set collision layers and masks for proper physics
 		physical_bone.collision_layer = 2  # Layer 2 for ragdoll parts
