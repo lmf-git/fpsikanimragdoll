@@ -53,7 +53,7 @@ var weapon_state: WeaponState = WeaponState.READY
 var is_weapon_sheathed: bool = false  # Toggle for sheathed state
 
 # Weapon positioning - skeleton-relative offsets
-@export var aim_weapon_offset: Vector3 = Vector3(0.3, -0.05, -0.5)  # Offset when aiming down sights (more up and forward)
+@export var aim_weapon_offset: Vector3 = Vector3(0.25, 0.2, -0.5)  # Offset when aiming down sights (high in front of face)
 @export var ready_weapon_offset: Vector3 = Vector3(0.35, -0.15, -0.4)  # Offset when ready/moving (more up and forward)
 @export var sheathed_weapon_offset: Vector3 = Vector3(0.5, -0.6, 0.2)  # Offset when sheathed at side
 @export var weapon_transition_speed: float = 8.0  # Speed of state transitions
@@ -900,6 +900,9 @@ func _attach_camera_to_ragdoll_head():
 
 	print("Attaching FPS camera to ragdoll head: ", physical_head_bone.name)
 
+	# Store camera's current rotation to preserve it
+	var camera_global_basis = fps_camera.global_transform.basis
+
 	# Remove camera from character
 	if fps_camera.get_parent():
 		fps_camera.get_parent().remove_child(fps_camera)
@@ -907,8 +910,10 @@ func _attach_camera_to_ragdoll_head():
 	# Add camera as child of physical head bone
 	physical_head_bone.add_child(fps_camera)
 
-	# Restore camera's relative position (should be at eye level in head)
-	fps_camera.transform = Transform3D(Basis(), Vector3(0, 0.1, 0.15))  # Standard eye offset
+	# Set camera position at eye level but preserve current rotation
+	fps_camera.position = Vector3(0, 0.1, 0.15)  # Eye offset
+	# Preserve the camera's rotation by converting global basis to local relative to head bone
+	fps_camera.global_transform.basis = camera_global_basis
 
 	print("FPS camera attached to ragdoll head")
 
@@ -1102,11 +1107,8 @@ func _update_weapon_position():
 				left_hand_target.global_position = left_hand_rest
 
 func _process(_delta):
-	# Update weapon position to follow hand
-	if equipped_weapon:
-		_update_weapon_position()
-
 	# Update IK - start() applies the IK each frame
+	# IMPORTANT: IK must be applied BEFORE weapon position update so hand bone is in correct position
 	if ik_enabled:
 		if left_hand_ik:
 			left_hand_ik.start()
@@ -1126,3 +1128,7 @@ func _process(_delta):
 			left_foot_ik.stop()
 		if right_foot_ik:
 			right_foot_ik.stop()
+
+	# Update weapon position AFTER IK to follow hand bone
+	if equipped_weapon:
+		_update_weapon_position()
