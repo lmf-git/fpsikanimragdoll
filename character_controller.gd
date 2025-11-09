@@ -46,9 +46,24 @@ class_name CharacterController
 var equipped_weapon: Weapon = null
 var nearby_weapon: Weapon = null
 var last_nearby_weapon: Weapon = null  # Track changes for debug logging
-var is_aiming: bool = false  # Track weapon aim state
-@export var aim_weapon_offset: Vector3 = Vector3(0.3, -0.2, -0.4)  # Offset when aiming in FPS
-@export var aim_speed: float = 10.0  # Speed of aim transition
+
+# Weapon states
+enum WeaponState { SHEATHED, READY, AIMING }
+var weapon_state: WeaponState = WeaponState.READY
+var is_weapon_sheathed: bool = false  # Toggle for sheathed state
+
+# Weapon positioning
+@export var aim_weapon_offset: Vector3 = Vector3(0.3, -0.2, -0.4)  # Offset when aiming down sights
+@export var ready_weapon_offset: Vector3 = Vector3(0.4, -0.3, -0.3)  # Offset when ready/moving
+@export var sheathed_weapon_offset: Vector3 = Vector3(0.5, -0.6, 0.2)  # Offset when sheathed at side
+@export var weapon_transition_speed: float = 8.0  # Speed of state transitions
+
+# Weapon sway
+@export var sway_amount: float = 0.05  # Amount of sway
+@export var sway_speed: float = 5.0  # Speed of sway oscillation
+@export var movement_sway_multiplier: float = 2.0  # Extra sway when moving
+var sway_time: float = 0.0  # Time accumulator for sway
+var current_sway: Vector3 = Vector3.ZERO  # Current sway offset
 
 # Ragdoll bone configuration - bones that will have physics
 const RAGDOLL_BONES = [
@@ -527,10 +542,18 @@ func _input(event):
 	# Right click for weapon aim
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_RIGHT:
-			if event.pressed and equipped_weapon:
-				is_aiming = true
+			if event.pressed and equipped_weapon and not is_weapon_sheathed:
+				weapon_state = WeaponState.AIMING
 			else:
-				is_aiming = false
+				# Return to ready or sheathed based on sheathed flag
+				weapon_state = WeaponState.SHEATHED if is_weapon_sheathed else WeaponState.READY
+
+	# H key to toggle weapon sheathed/ready
+	if event is InputEventKey and event.pressed and event.keycode == KEY_H:
+		if equipped_weapon:
+			is_weapon_sheathed = !is_weapon_sheathed
+			weapon_state = WeaponState.SHEATHED if is_weapon_sheathed else WeaponState.READY
+			print("Weapon ", "sheathed" if is_weapon_sheathed else "ready")
 
 	if event.is_action_pressed("ui_cancel"):
 		if Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED:
@@ -949,6 +972,28 @@ func drop_weapon():
 	equipped_weapon.unequip()
 	equipped_weapon = null
 
+func _calculate_weapon_sway(delta: float, is_moving: bool) -> Vector3:
+	"""Calculate procedural weapon sway based on movement and time"""
+	sway_time += delta * sway_speed
+
+	# Base sway using sine waves for smooth oscillation
+	var sway_x = sin(sway_time) * sway_amount
+	var sway_y = cos(sway_time * 0.8) * sway_amount * 0.5
+
+	# Extra sway when moving
+	if is_moving:
+		sway_x *= movement_sway_multiplier
+		sway_y *= movement_sway_multiplier
+		# Add bob effect when moving
+		sway_y += sin(sway_time * 2.0) * sway_amount * movement_sway_multiplier * 0.3
+
+	# Reduce sway when aiming
+	if weapon_state == WeaponState.AIMING:
+		sway_x *= 0.3
+		sway_y *= 0.3
+
+	return Vector3(sway_x, sway_y, 0)
+
 func _update_weapon_position():
 	"""Update weapon position to follow hand bones and update IK targets"""
 	if not equipped_weapon or not skeleton or right_hand_bone_id < 0:
@@ -956,19 +1001,36 @@ func _update_weapon_position():
 
 	var ik_targets_node = get_node_or_null("IKTargets")
 
-	if is_aiming:
-		# AIMING MODE: Position weapon at camera view, update both hands via IK
+	# Determine weapon offset based on state
+	var target_offset = ready_weapon_offset
+	match weapon_state:
+		WeaponState.SHEATHED:
+			target_offset = sheathed_weapon_offset
+		WeaponState.READY:
+			target_offset = ready_weapon_offset
+		WeaponState.AIMING:
+			target_offset = aim_weapon_offset
+
+	# Check if character is moving for sway calculation
+	var is_moving = velocity.length() > 0.1
+
+	if weapon_state == WeaponState.AIMING or weapon_state == WeaponState.READY:
+		# CAMERA-ALIGNED MODE: Position weapon relative to camera view
 		var active_camera = fps_camera if camera_mode == 0 else tps_camera
 		if active_camera:
-			# Position weapon in front of camera
+			# Calculate sway
+			current_sway = _calculate_weapon_sway(get_process_delta_time(), is_moving)
+
+			# Position weapon in front of camera with offset and sway
 			var camera_transform = active_camera.global_transform
-			var aim_pos = camera_transform.origin + camera_transform.basis.z * aim_weapon_offset.z + camera_transform.basis.x * aim_weapon_offset.x + camera_transform.basis.y * aim_weapon_offset.y
+			var base_offset = target_offset + current_sway
+			var aim_pos = camera_transform.origin + camera_transform.basis.z * base_offset.z + camera_transform.basis.x * base_offset.x + camera_transform.basis.y * base_offset.y
 
 			# Align weapon to camera direction
 			equipped_weapon.global_transform.basis = camera_transform.basis
 			equipped_weapon.global_position = aim_pos
 
-			# Update both hand IK targets to weapon grips when aiming
+			# Update both hand IK targets to weapon grips when in camera mode
 			if ik_targets_node:
 				# Right hand to main grip
 				if equipped_weapon.main_grip:
@@ -976,16 +1038,19 @@ func _update_weapon_position():
 					if right_hand_target:
 						right_hand_target.global_position = equipped_weapon.main_grip.global_position
 
-				# Left hand to secondary grip (for two-handed) or support position
+				# Left hand to secondary grip (for two-handed weapons)
 				if equipped_weapon.is_two_handed and equipped_weapon.secondary_grip:
 					var left_hand_target = ik_targets_node.get_node_or_null("LeftHandTarget")
 					if left_hand_target:
 						left_hand_target.global_position = equipped_weapon.secondary_grip.global_position
 	else:
-		# NORMAL MODE: Weapon follows right hand bone
+		# SHEATHED MODE: Weapon lowered at side, minimal IK
 		var right_hand_transform = skeleton.global_transform * skeleton.get_bone_global_pose(right_hand_bone_id)
 
-		# Position weapon so its main_grip aligns with the hand bone
+		# Calculate sway even when sheathed (minimal)
+		current_sway = _calculate_weapon_sway(get_process_delta_time(), is_moving) * 0.2  # Reduce sway when sheathed
+
+		# Position weapon at side with offset and minimal sway
 		if equipped_weapon.main_grip:
 			# Calculate offset from weapon origin to main grip in weapon's local space
 			var grip_local_pos = equipped_weapon.main_grip.position
@@ -993,17 +1058,16 @@ func _update_weapon_position():
 			# First set rotation to align with hand
 			equipped_weapon.global_transform.basis = right_hand_transform.basis
 
-			# Then position weapon so grip aligns with hand
-			# Weapon position = Hand position - (grip offset in world space)
-			var grip_world_offset = equipped_weapon.global_transform.basis * grip_local_pos
+			# Then position weapon so grip aligns with hand, with sway
+			var grip_world_offset = equipped_weapon.global_transform.basis * (grip_local_pos + current_sway)
 			equipped_weapon.global_position = right_hand_transform.origin - grip_world_offset
 		else:
 			# Fallback: if no grip point defined, use simple offset
-			var weapon_offset = Vector3(0, -0.05, 0.1)
+			var weapon_offset = Vector3(0, -0.05, 0.1) + current_sway
 			equipped_weapon.global_position = right_hand_transform.origin + right_hand_transform.basis * weapon_offset
 			equipped_weapon.global_transform.basis = right_hand_transform.basis
 
-		# Update IK targets for two-handed weapons - use BOTH hands
+		# Update IK targets for two-handed weapons even when sheathed
 		if ik_targets_node and equipped_weapon.is_two_handed:
 			# Right hand to main grip for two-handed weapons
 			if equipped_weapon.main_grip:

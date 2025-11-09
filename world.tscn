@@ -128,6 +128,8 @@ Space - Jump
 Shift - Sprint
 Mouse - Look around (Free Look)
 E - Pick up / Drop Weapon
+H - Holster / Ready Weapon
+Right Click - Aim Down Sights
 O - Toggle Camera (FPS/TPS)
 I - Toggle IK
 R - Toggle Ragdoll
@@ -136,6 +138,8 @@ ESC - Release/Capture mouse
 TIPS:
 - Head turns before body (Free Look)
 - Walk near weapons and press E to pick up
+- Press H to lower/raise weapon
+- Hold Right Click to aim (when not holstered)
 - Press ESC to release mouse, then click/drag IK targets
 - IK targets: Red=Left Hand, Green=Right Hand,
   Blue=Left Foot, Yellow=Right Foot"
