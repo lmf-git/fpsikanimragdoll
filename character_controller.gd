@@ -1032,17 +1032,26 @@ func _update_weapon_position():
 
 			# Update both hand IK targets to weapon grips when in camera mode
 			if ik_targets_node:
-				# Right hand to main grip
+				# Right hand to main grip (always for all weapons)
 				if equipped_weapon.main_grip:
 					var right_hand_target = ik_targets_node.get_node_or_null("RightHandTarget")
 					if right_hand_target:
 						right_hand_target.global_position = equipped_weapon.main_grip.global_position
 
-				# Left hand to secondary grip (for two-handed weapons)
-				if equipped_weapon.is_two_handed and equipped_weapon.secondary_grip:
-					var left_hand_target = ik_targets_node.get_node_or_null("LeftHandTarget")
-					if left_hand_target:
+				# Left hand positioning
+				var left_hand_target = ik_targets_node.get_node_or_null("LeftHandTarget")
+				if left_hand_target:
+					if equipped_weapon.is_two_handed and equipped_weapon.secondary_grip:
+						# Two-handed: left hand to foregrip
 						left_hand_target.global_position = equipped_weapon.secondary_grip.global_position
+					elif weapon_state == WeaponState.AIMING:
+						# Pistol aiming: left hand supports right hand (under pistol)
+						var support_offset = Vector3(-0.08, -0.08, 0)  # Slightly left, down, same depth
+						left_hand_target.global_position = equipped_weapon.main_grip.global_position + equipped_weapon.global_transform.basis * support_offset
+					else:
+						# Pistol ready: left hand at relaxed ready position
+						var ready_offset = Vector3(-0.2, -0.15, -0.1)  # Left, down, back
+						left_hand_target.global_position = equipped_weapon.global_position + equipped_weapon.global_transform.basis * ready_offset
 	else:
 		# SHEATHED MODE: Weapon lowered at side, minimal IK
 		var right_hand_transform = skeleton.global_transform * skeleton.get_bone_global_pose(right_hand_bone_id)
