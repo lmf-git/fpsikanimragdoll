@@ -45,6 +45,7 @@ class_name CharacterController
 @export var pickup_range: float = 2.0
 var equipped_weapon: Weapon = null
 var nearby_weapon: Weapon = null
+var last_nearby_weapon: Weapon = null  # Track changes for debug logging
 
 # Ragdoll bone configuration - bones that will have physics
 const RAGDOLL_BONES = [
@@ -732,6 +733,7 @@ func _detect_nearby_weapon():
 
 	# Find all weapons in the scene
 	var weapons = get_tree().get_nodes_in_group("weapons")
+
 	if weapons.is_empty():
 		# If no weapons in group, search for Weapon nodes
 		weapons = []
@@ -745,6 +747,14 @@ func _detect_nearby_weapon():
 			if distance < closest_distance:
 				nearby_weapon = weapon
 				closest_distance = distance
+
+	# Only log when nearby weapon changes
+	if nearby_weapon != last_nearby_weapon:
+		if nearby_weapon:
+			print(">> Nearby weapon detected: ", nearby_weapon.weapon_name, " - Press E to pick up")
+		elif last_nearby_weapon:
+			print(">> Left weapon pickup range")
+		last_nearby_weapon = nearby_weapon
 
 
 func _find_weapons_recursive(node: Node, weapons: Array):

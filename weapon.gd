@@ -30,8 +30,10 @@ func _ready():
 func equip(character: Node3D):
 	"""Equip this weapon to a character"""
 	if is_equipped:
+		print("Weapon ", weapon_name, " already equipped!")
 		return false
 
+	print("Equipping weapon ", weapon_name, " to character")
 	is_equipped = true
 	holder = character
 
@@ -50,6 +52,7 @@ func equip(character: Node3D):
 	global_position = character.global_position
 	global_rotation = character.global_rotation
 
+	print("Weapon ", weapon_name, " equipped successfully")
 	return true
 
 func unequip():
@@ -64,8 +67,8 @@ func unequip():
 	# Re-enable physics
 	freeze = false
 	gravity_scale = 1.0
-	collision_layer = 1
-	collision_mask = 1
+	collision_layer = 4  # Weapon layer
+	collision_mask = 1   # Collide with world
 
 	# Detach from character and add to world
 	if get_parent():
@@ -77,6 +80,8 @@ func unequip():
 		old_holder.get_tree().root.add_child(self)
 		global_position = world_pos
 		global_rotation = world_rot
+
+	print("Weapon ", weapon_name, " unequipped and dropped at ", global_position)
 
 func get_grip_position(grip_type: String) -> Vector3:
 	"""Get the global position of a grip point"""
