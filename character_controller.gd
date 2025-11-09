@@ -39,6 +39,11 @@ class_name CharacterController
 @export var auto_create_ragdoll: bool = true  # Automatically create physical bones at runtime
 @export var debug_show_colliders: bool = true  # Show collision shapes for debugging
 
+# Weapon system
+@export var pickup_range: float = 2.0
+var equipped_weapon: Weapon = null
+var nearby_weapon: Weapon = null
+
 # Ragdoll bone configuration - bones that will have physics
 const RAGDOLL_BONES = [
 	# Torso
@@ -420,6 +425,12 @@ func _input(event):
 	if event.is_action_pressed("toggle_ragdoll"):
 		toggle_ragdoll()
 
+	if event.is_action_pressed("ui_accept"):  # E key for pickup
+		if equipped_weapon:
+			drop_weapon()
+		elif nearby_weapon:
+			pickup_weapon(nearby_weapon)
+
 	if event.is_action_pressed("ui_cancel"):
 		if Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED:
 			Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
@@ -513,6 +524,9 @@ func _physics_process(delta):
 	if head_look_enabled and skeleton and head_bone_id >= 0:
 		_update_head_look(delta)
 
+	# Detect nearby weapons for pickup
+	_detect_nearby_weapon()
+
 func _update_head_look(delta):
 	# Calculate head rotation relative to body
 	var head_yaw_offset = angle_difference(body_rotation_y, camera_rotation.y)
@@ -604,6 +618,62 @@ func toggle_ragdoll():
 			print("Mesh visibility restored based on camera mode")
 
 	print("Ragdoll enabled: ", ragdoll_enabled)
+
+func _detect_nearby_weapon():
+	"""Detect weapons within pickup range"""
+	nearby_weapon = null
+
+	# Find all weapons in the scene
+	var weapons = get_tree().get_nodes_in_group("weapons")
+	if weapons.is_empty():
+		# If no weapons in group, search for Weapon nodes
+		weapons = []
+		_find_weapons_recursive(get_tree().root, weapons)
+
+	# Find closest weapon within range
+	var closest_distance = pickup_range
+	for weapon in weapons:
+		if weapon is Weapon and not weapon.is_equipped:
+			var distance = global_position.distance_to(weapon.global_position)
+			if distance < closest_distance:
+				nearby_weapon = weapon
+				closest_distance = distance
+
+func _find_weapons_recursive(node: Node, weapons: Array):
+	"""Recursively find all Weapon nodes"""
+	if node is Weapon:
+		weapons.append(node)
+	for child in node.get_children():
+		_find_weapons_recursive(child, weapons)
+
+func pickup_weapon(weapon: Weapon):
+	"""Pick up a weapon"""
+	if not weapon or weapon.is_equipped:
+		return
+
+	print("Picking up weapon: ", weapon.weapon_name)
+
+	# Equip the weapon
+	if weapon.equip(self):
+		equipped_weapon = weapon
+		nearby_weapon = null
+
+		# Position weapon at character hand (will be refined with IK later)
+		if skeleton and head_bone_id >= 0:
+			# Position at head for now (placeholder - will use hand bone + IK later)
+			var head_transform = skeleton.global_transform * skeleton.get_bone_global_pose(head_bone_id)
+			weapon.global_position = head_transform.origin + Vector3(0.3, -0.2, -0.3)
+			weapon.global_rotation = head_transform.basis.get_euler()
+
+func drop_weapon():
+	"""Drop the currently equipped weapon"""
+	if not equipped_weapon:
+		return
+
+	print("Dropping weapon: ", equipped_weapon.weapon_name)
+
+	equipped_weapon.unequip()
+	equipped_weapon = null
 
 func _process(_delta):
 	# Update IK targets if enabled
