@@ -633,6 +633,12 @@ func _input(event):
 		elif nearby_weapon:
 			pickup_weapon(nearby_weapon)
 
+	# Left click for shooting
+	if event is InputEventMouseButton:
+		if event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+			if equipped_weapon:
+				_shoot_weapon()
+
 	# Right click for weapon aim
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_RIGHT:
@@ -1173,6 +1179,80 @@ func pickup_weapon(weapon: Weapon):
 		nearby_weapon = null
 
 		# Weapon is now parented to hand bone and will automatically follow IK transforms
+
+func _shoot_weapon():
+	"""Shoot the currently equipped weapon"""
+	if not equipped_weapon:
+		return
+
+	# Get shoot direction from camera
+	var camera = fps_camera if camera_mode == 0 else tps_camera
+	if not camera:
+		return
+
+	var shoot_direction = -camera.global_transform.basis.z  # Forward direction
+
+	# Shoot from camera position
+	var shoot_from = camera.global_position
+
+	# Call weapon shoot function
+	var hit_result = equipped_weapon.shoot(shoot_from, shoot_direction)
+
+	# Handle hit result
+	if hit_result.hit:
+		var hit_node = hit_result.collider
+
+		# Check if we hit a character with a skeleton (for partial ragdoll)
+		if hit_node is PhysicalBone3D:
+			var target_character = _find_parent_character(hit_node)
+			if target_character and target_character != self:
+				# Apply partial ragdoll to the hit bone
+				target_character._apply_partial_ragdoll(hit_result.bone_name, hit_result.direction * hit_result.knockback_force)
+
+func _find_parent_character(node: Node) -> Node:
+	"""Find the parent CharacterController if it exists"""
+	var current = node.get_parent()
+	while current:
+		if current is CharacterController:
+			return current
+		current = current.get_parent()
+	return null
+
+func _apply_partial_ragdoll(bone_name: String, impulse: Vector3):
+	"""Apply partial ragdoll effect to a specific bone"""
+	if not skeleton:
+		return
+
+	print("Applying partial ragdoll to bone: ", bone_name, " with impulse: ", impulse)
+
+	# Find the physical bone
+	var physical_bone: PhysicalBone3D = null
+	for child in skeleton.get_children():
+		if child is PhysicalBone3D and child.bone_name == bone_name:
+			physical_bone = child
+			break
+
+	if not physical_bone:
+		print("  Physical bone not found!")
+		return
+
+	# Enable physics simulation on this bone temporarily
+	physical_bone.set_simulate_physics(true)
+
+	# Apply impulse
+	physical_bone.apply_central_impulse(impulse)
+
+	# Schedule recovery (return to normal after delay)
+	var recover_timer = get_tree().create_timer(1.5)
+	recover_timer.timeout.connect(func(): _recover_bone(physical_bone))
+
+	print("  Partial ragdoll applied, will recover in 1.5s")
+
+func _recover_bone(physical_bone: PhysicalBone3D):
+	"""Recover a bone from ragdoll state"""
+	if physical_bone and is_instance_valid(physical_bone):
+		physical_bone.set_simulate_physics(false)
+		print("Recovered bone: ", physical_bone.bone_name)
 
 func drop_weapon():
 	"""Drop the currently equipped weapon"""

@@ -17,6 +17,17 @@ enum WeaponType { PISTOL, RIFLE }
 @export var pickup_range: float = 2.0
 @export var can_be_picked_up: bool = true
 
+# Shooting properties
+@export var damage: float = 25.0
+@export var max_range: float = 100.0
+@export var knockback_force: float = 5.0
+@export var fire_rate: float = 0.2  # Seconds between shots
+@export var muzzle_point: Node3D  # Where bullets come from
+
+# Shooting state
+var can_shoot: bool = true
+var shoot_cooldown_timer: float = 0.0
+
 # State
 var is_equipped: bool = false
 var holder: Node3D = null
@@ -26,6 +37,62 @@ func _ready():
 	if not is_equipped:
 		freeze = false
 		gravity_scale = 1.0
+
+func _process(delta):
+	# Update shoot cooldown
+	if not can_shoot:
+		shoot_cooldown_timer -= delta
+		if shoot_cooldown_timer <= 0.0:
+			can_shoot = true
+
+func shoot(from_position: Vector3, direction: Vector3) -> Dictionary:
+	"""
+	Shoot the weapon using raycast
+	Returns dictionary with hit info: {hit: bool, position: Vector3, normal: Vector3, collider: Node3D, bone_name: String}
+	"""
+	if not can_shoot:
+		return {"hit": false}
+
+	# Start cooldown
+	can_shoot = false
+	shoot_cooldown_timer = fire_rate
+
+	# Use muzzle point if available, otherwise use from_position
+	var ray_origin = from_position
+	if muzzle_point:
+		ray_origin = muzzle_point.global_position
+
+	# Perform raycast
+	var space_state = get_world_3d().direct_space_state
+	var query = PhysicsRayQueryParameters3D.create(ray_origin, ray_origin + direction * max_range)
+	query.exclude = [holder] if holder else []  # Don't hit the holder
+	query.collide_with_areas = true
+	query.collide_with_bodies = true
+
+	var result = space_state.intersect_ray(query)
+
+	if result:
+		print("Shot hit: ", result.collider.name, " at ", result.position)
+
+		# Check if we hit a PhysicalBone3D (for partial ragdoll)
+		var bone_name = ""
+		if result.collider is PhysicalBone3D:
+			bone_name = result.collider.bone_name
+			print("  Hit bone: ", bone_name)
+
+		# Return hit info
+		return {
+			"hit": true,
+			"position": result.position,
+			"normal": result.normal,
+			"collider": result.collider,
+			"bone_name": bone_name,
+			"damage": damage,
+			"knockback_force": knockback_force,
+			"direction": direction
+		}
+
+	return {"hit": false}
 
 func equip(character: Node3D, hand_attachment: Node3D = null):
 	"""Equip this weapon to a character's hand attachment node"""
