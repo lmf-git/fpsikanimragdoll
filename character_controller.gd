@@ -1317,8 +1317,14 @@ func pickup_weapon(weapon: Weapon):
 
 		# Debug: Verify weapon attachment
 		print("DEBUG: Weapon equipped!")
-		print("  BoneAttachment position: ", right_hand_attachment.global_position if right_hand_attachment else "NULL")
-		print("  Weapon parent: ", equipped_weapon.get_parent().name if equipped_weapon.get_parent() else "NULL")
+		if right_hand_attachment:
+			print("  BoneAttachment position: ", right_hand_attachment.global_position)
+		else:
+			print("  BoneAttachment position: NULL")
+		if equipped_weapon.get_parent():
+			print("  Weapon parent: ", equipped_weapon.get_parent().name)
+		else:
+			print("  Weapon parent: NULL")
 		print("  Weapon global position: ", equipped_weapon.global_position)
 		print("  Weapon local position: ", equipped_weapon.position)
 		if skeleton and right_hand_bone_id >= 0:
