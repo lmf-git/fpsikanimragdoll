@@ -240,10 +240,10 @@ func _create_ragdoll_bones():
 
 	# RAGDOLL BEST PRACTICES IMPLEMENTED:
 	# 1. Heavy torso/head mass (10kg/5kg/3kg) acts as anchor to prevent spinning
-	# 2. Locked torso joints (0° swing/twist + axis locks) for rigid upper body
+	# 2. HINGE joints for single-axis rotation on torso/spine/neck/head to prevent multi-axis spinning
 	# 3. HINGE joints for single-axis movement (knees, elbows, ankles, wrists)
 	# 4. Tight collision shapes (small radius) to prevent excess leverage
-	# 5. Maximum constraint enforcement (ERP=1.0, CFM=0.0) for locked bones
+	# 5. Maximum constraint enforcement (ERP=1.0, CFM=0.0) for core bones
 	# 6. High angular damping (5.0) on core bones to prevent rotation
 	# 7. Self-collision disabled between all physical bones
 	# 8. Proper collision layers: ragdoll on layer 2, world on layer 1
@@ -356,9 +356,10 @@ func _create_ragdoll_bones():
 			debug_mesh.owner = physical_bone
 
 		# CRITICAL: Configure joint to connect to parent bone
-		# Use HINGE for knees/elbows/ankles/wrists - single axis rotation only
+		# Use HINGE for single-axis rotation to prevent unwanted multi-axis spinning
+		# HINGE joints: knees, elbows, ankles, wrists, AND torso/spine/neck/head for controlled bending
 		# Don't use NONE - it disconnects bones completely!
-		var use_hinge = bone_suffix in ["Lower_Leg", "L_Lower_Leg", "R_Lower_Leg", "Lower_Arm", "L_Lower_Arm", "R_Lower_Arm", "Foot", "L_Foot", "R_Foot", "Hand", "L_Hand", "R_Hand"]
+		var use_hinge = bone_suffix in ["Lower_Leg", "L_Lower_Leg", "R_Lower_Leg", "Lower_Arm", "L_Lower_Arm", "R_Lower_Arm", "Foot", "L_Foot", "R_Foot", "Hand", "L_Hand", "R_Hand", "Spine", "Chest", "Upper_Chest", "Neck", "Head"]
 
 		if use_hinge:
 			physical_bone.joint_type = PhysicalBone3D.JOINT_TYPE_HINGE
@@ -463,8 +464,16 @@ func _create_ragdoll_bones():
 		# Apply limits based on joint type
 		if use_hinge:
 			# Hinge joints use different constraint properties
-			physical_bone.set("joint_constraints/angular_limit_lower", -swing_limit)
-			physical_bone.set("joint_constraints/angular_limit_upper", 0)  # Only bend one way
+			# For limbs (knees/elbows): only bend one way (backward)
+			# For torso (spine/neck/head): allow bending both ways (forward/back)
+			if bone_suffix in ["Spine", "Chest", "Upper_Chest", "Neck", "Head"]:
+				# Torso can bend forward and backward
+				physical_bone.set("joint_constraints/angular_limit_lower", -swing_limit)
+				physical_bone.set("joint_constraints/angular_limit_upper", swing_limit)
+			else:
+				# Limbs only bend one way
+				physical_bone.set("joint_constraints/angular_limit_lower", -swing_limit)
+				physical_bone.set("joint_constraints/angular_limit_upper", 0)
 			physical_bone.set("joint_constraints/angular_limit_enabled", true)
 		else:
 			# Cone joints
@@ -983,8 +992,7 @@ func pickup_weapon(weapon: Weapon):
 		equipped_weapon = weapon
 		nearby_weapon = null
 
-		# Position weapon at right hand
-		_update_weapon_position()
+		# Weapon will be positioned in next _process() call via IK system
 
 func drop_weapon():
 	"""Drop the currently equipped weapon"""
@@ -1029,8 +1037,8 @@ func _calculate_weapon_sway(delta: float, is_moving: bool) -> Vector3:
 
 	return Vector3(sway_x, sway_y, 0)
 
-func _update_weapon_position():
-	"""Update weapon position and rotation to follow hand bones (skeleton-based, not camera-based)"""
+func _update_weapon_ik_targets():
+	"""Set IK target positions for weapon holding (called BEFORE IK is applied)"""
 	if not equipped_weapon or not skeleton or right_hand_bone_id < 0:
 		return
 
@@ -1038,12 +1046,10 @@ func _update_weapon_position():
 	if not ik_targets_node:
 		return
 
-	# Get camera rotation for IK target positioning (skeleton-based with camera aim direction)
+	# Get camera rotation for IK target positioning
 	var active_camera = fps_camera if camera_mode == 0 else tps_camera
 	if not active_camera:
 		return
-
-	var camera_transform = active_camera.global_transform
 
 	# Check if character is moving for sway calculation
 	var is_moving = velocity.length() > 0.1
@@ -1060,7 +1066,7 @@ func _update_weapon_position():
 		WeaponState.AIMING:
 			target_offset = aim_weapon_offset
 
-	# STEP 1: Position right hand IK target relative to BODY (chest bone), not camera
+	# Position right hand IK target relative to BODY (chest bone), not camera
 	var right_hand_target = ik_targets_node.get_node_or_null("RightHandTarget")
 	if right_hand_target:
 		var base_offset = target_offset + current_sway
@@ -1084,7 +1090,26 @@ func _update_weapon_position():
 		var target_pos = anchor_transform.origin + body_basis * base_offset
 		right_hand_target.global_position = target_pos
 
-	# STEP 2: Weapon follows right hand bone (after IK has been applied)
+	# Update left hand IK target ONLY for two-handed weapons (rifles)
+	var left_hand_target = ik_targets_node.get_node_or_null("LeftHandTarget")
+	if left_hand_target:
+		if equipped_weapon.is_two_handed and equipped_weapon.secondary_grip:
+			# Two-handed weapon (rifle): left hand to foregrip
+			left_hand_target.global_position = equipped_weapon.secondary_grip.global_position
+		else:
+			# Pistol: disable left hand IK by moving target to default position
+			# This allows left hand to use idle animation instead
+			var l_hand_id = skeleton.find_bone("characters3d.com___L_Hand")
+			if l_hand_id >= 0:
+				var left_hand_rest = skeleton.global_transform * skeleton.get_bone_rest(l_hand_id).origin
+				left_hand_target.global_position = left_hand_rest
+
+func _update_weapon_to_hand():
+	"""Position weapon to follow IK-transformed hand bone (called AFTER IK is applied)"""
+	if not equipped_weapon or not skeleton or right_hand_bone_id < 0:
+		return
+
+	# Get the IK-transformed hand bone position
 	var right_hand_transform = skeleton.global_transform * skeleton.get_bone_global_pose(right_hand_bone_id)
 
 	# Weapon rotation: hand bone rotation with adjustment for proper weapon orientation
@@ -1102,23 +1127,17 @@ func _update_weapon_position():
 		# Fallback: if no grip point defined, use simple offset
 		equipped_weapon.global_position = right_hand_transform.origin
 
-	# STEP 3: Update left hand IK target ONLY for two-handed weapons (rifles)
-	var left_hand_target = ik_targets_node.get_node_or_null("LeftHandTarget")
-	if left_hand_target:
-		if equipped_weapon.is_two_handed and equipped_weapon.secondary_grip:
-			# Two-handed weapon (rifle): left hand to foregrip
-			left_hand_target.global_position = equipped_weapon.secondary_grip.global_position
-		else:
-			# Pistol: disable left hand IK by moving target to default position
-			# This allows left hand to use idle animation instead
-			var l_hand_id = skeleton.find_bone("characters3d.com___L_Hand")
-			if l_hand_id >= 0:
-				var left_hand_rest = skeleton.global_transform * skeleton.get_bone_rest(l_hand_id).origin
-				left_hand_target.global_position = left_hand_rest
-
 func _process(_delta):
-	# Update IK - start() applies the IK each frame
-	# IMPORTANT: IK must be applied BEFORE weapon position update so hand bone is in correct position
+	# WEAPON UPDATE ORDER - CRITICAL for proper IK-based positioning:
+	# 1. Set IK targets (where hands should go)
+	# 2. Apply IK (moves bones to targets)
+	# 3. Position weapon to follow IK-transformed hand
+
+	# STEP 1: Set IK targets for weapon holding
+	if equipped_weapon:
+		_update_weapon_ik_targets()
+
+	# STEP 2: Apply IK - start() moves bones to targets
 	if ik_enabled:
 		if left_hand_ik:
 			left_hand_ik.start()
@@ -1139,6 +1158,6 @@ func _process(_delta):
 		if right_foot_ik:
 			right_foot_ik.stop()
 
-	# Update weapon position AFTER IK to follow hand bone
+	# STEP 3: Position weapon to follow IK-transformed hand bone
 	if equipped_weapon:
-		_update_weapon_position()
+		_update_weapon_to_hand()
