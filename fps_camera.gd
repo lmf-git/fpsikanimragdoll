@@ -32,24 +32,22 @@ func _physics_process(_delta):
 	if not controller:
 		return
 
-	# Position and orient camera based on head bone if available
-	if skeleton and head_bone_id >= 0:
-		# Get the global transform of the head bone (includes all rotations from head tracking)
-		var head_global_transform = skeleton.global_transform * skeleton.get_bone_global_pose(head_bone_id)
+	var cam_rotation = controller.get("camera_rotation")
+	if not cam_rotation:
+		return
 
+	# Position at head bone if available (so camera moves with head)
+	if skeleton and head_bone_id >= 0:
+		# Get the global transform of the head bone
+		var head_global_transform = skeleton.global_transform * skeleton.get_bone_global_pose(head_bone_id)
 		# Position camera at head bone with offset
 		global_transform.origin = head_global_transform.origin + head_global_transform.basis * head_offset
-
-		# Use the head bone's rotation directly (this includes neck + head rotations from _update_head_look)
-		# The head bone rotation already has the aiming applied to it
-		global_transform.basis = head_global_transform.basis
 	else:
-		# Fallback: use manual camera rotation if no skeleton
-		var cam_rotation = controller.get("camera_rotation")
-		if cam_rotation:
-			global_transform.origin = controller.global_position + Vector3(0, 1.6, 0)
+		# Fallback: position relative to controller
+		global_transform.origin = controller.global_position + Vector3(0, 1.6, 0)
 
-			var camera_transform = Transform3D()
-			camera_transform = camera_transform.rotated(Vector3.UP, cam_rotation.y)
-			camera_transform = camera_transform.rotated(camera_transform.basis.x, cam_rotation.x)
-			global_transform.basis = camera_transform.basis
+	# Apply camera rotation (head tracking rotates the bones, camera rotation controls view)
+	var camera_transform = Transform3D()
+	camera_transform = camera_transform.rotated(Vector3.UP, cam_rotation.y)
+	camera_transform = camera_transform.rotated(camera_transform.basis.x, cam_rotation.x)
+	global_transform.basis = camera_transform.basis

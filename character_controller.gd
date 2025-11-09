@@ -35,6 +35,7 @@ class_name CharacterController
 # Ragdoll
 @export var ragdoll_enabled: bool = false
 @export var auto_create_ragdoll: bool = true  # Automatically create physical bones at runtime
+@export var debug_show_colliders: bool = true  # Show collision shapes for debugging
 
 # Ragdoll bone configuration - bones that will have physics
 const RAGDOLL_BONES = [
@@ -183,16 +184,78 @@ func _create_ragdoll_bones():
 		physical_bone.name = "PhysicalBone_" + bone_suffix
 		physical_bone.bone_name = bone_name
 
-		# Create a simple capsule collision shape
+		# Get bone size to create appropriately sized collision shape
+		var bone_parent_id = skeleton.get_bone_parent(bone_id)
+		var bone_length = 0.2  # default
+
+		# Calculate bone length from rest pose if possible
+		if bone_parent_id >= 0:
+			var bone_rest = skeleton.get_bone_rest(bone_id)
+			bone_length = bone_rest.origin.length()
+			if bone_length < 0.05:
+				bone_length = 0.2
+
+		# Determine shape size based on bone type
+		var radius = 0.05
+		var height = bone_length
+
+		# Larger shapes for major bones
+		if bone_suffix in ["Hips", "Spine", "Chest", "Upper_Chest"]:
+			radius = 0.12
+			height = 0.25
+		elif bone_suffix in ["Head"]:
+			radius = 0.15
+			height = 0.2
+		elif bone_suffix in ["Upper_Arm", "Lower_Arm", "Upper_Leg", "Lower_Leg"]:
+			radius = 0.06
+			height = max(bone_length, 0.2)
+		elif "Hand" in bone_suffix or "Foot" in bone_suffix:
+			radius = 0.05
+			height = 0.15
+		elif "Finger" in bone_suffix or "Thumb" in bone_suffix or "Index" in bone_suffix or "Middle" in bone_suffix or "Ring" in bone_suffix or "Little" in bone_suffix or "Toes" in bone_suffix:
+			radius = 0.02
+			height = 0.05
+
+		# Create collision shape
 		var shape = CapsuleShape3D.new()
-		shape.radius = 0.08
-		shape.height = 0.25
+		shape.radius = radius
+		shape.height = height
 
 		# Add collision shape
 		var collision_shape = CollisionShape3D.new()
 		collision_shape.shape = shape
 		physical_bone.add_child(collision_shape)
 		collision_shape.owner = physical_bone
+
+		# Add debug visualization mesh
+		if debug_show_colliders:
+			var debug_mesh = MeshInstance3D.new()
+			var capsule_mesh = CapsuleMesh.new()
+			capsule_mesh.radius = radius
+			capsule_mesh.height = height
+			debug_mesh.mesh = capsule_mesh
+
+			# Create semi-transparent material for debug view
+			var debug_material = StandardMaterial3D.new()
+			debug_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+			debug_material.albedo_color = Color(0, 1, 0, 0.3)  # Green semi-transparent
+			debug_mesh.material_override = debug_material
+
+			collision_shape.add_child(debug_mesh)
+			debug_mesh.owner = physical_bone
+
+		# CRITICAL: Configure joint to connect to parent bone
+		physical_bone.joint_type = PhysicalBone3D.JOINT_TYPE_CONE
+		physical_bone.joint_offset = Transform3D()  # No offset from bone
+
+		# Joint limits - allow realistic movement
+		physical_bone.set("joint_constraints/swing_span", deg_to_rad(45))
+		physical_bone.set("joint_constraints/twist_span", deg_to_rad(30))
+
+		# Soften joints for more natural movement
+		physical_bone.set("joint_constraints/bias", 0.3)
+		physical_bone.set("joint_constraints/softness", 0.8)
+		physical_bone.set("joint_constraints/relaxation", 1.0)
 
 		# Physics properties
 		physical_bone.mass = 1.0
@@ -208,6 +271,7 @@ func _create_ragdoll_bones():
 		physical_bone.owner = get_tree().edited_scene_root if Engine.is_editor_hint() else self
 
 		bones_created += 1
+		print("  Created: ", physical_bone.name, " (radius: ", radius, ", height: ", height, ")")
 
 	# Set up collision exceptions between all physical bones (prevent self-collision)
 	var all_physical_bones = []
@@ -414,12 +478,25 @@ func toggle_ragdoll():
 		collision_layer = 0
 		collision_mask = 0
 		set_physics_process(false)
+
+		# Make mesh visible on all layers for ragdoll (so it's visible in FPS mode too)
+		if mesh_instance:
+			mesh_instance.layers = 1
+			print("Mesh made visible for ragdoll")
 	else:
 		print("DISABLING RAGDOLL - Stopping physics simulation")
 		skeleton.physical_bones_stop_simulation()
 		collision_layer = 1
 		collision_mask = 1
 		set_physics_process(true)
+
+		# Restore mesh visibility based on camera mode
+		if mesh_instance:
+			if camera_mode == 0:  # FPS mode
+				mesh_instance.layers = 2  # Hide from FPS camera
+			else:  # TPS mode
+				mesh_instance.layers = 1  # Visible
+			print("Mesh visibility restored based on camera mode")
 
 	print("Ragdoll enabled: ", ragdoll_enabled)
 
