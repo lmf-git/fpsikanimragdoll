@@ -17,11 +17,13 @@ class_name CharacterController
 @export var head_bone_name: String = "characters3d.com___Head"
 @export var neck_bone_name: String = "characters3d.com___Neck"
 
-# Head look
+# Head look and free look
 @export var head_look_enabled: bool = true
-@export var max_head_rotation_x: float = 60.0  # degrees
-@export var max_head_rotation_y: float = 70.0  # degrees
-@export var head_rotation_speed: float = 5.0
+@export var max_head_rotation_x: float = 60.0  # degrees (pitch)
+@export var max_head_rotation_y: float = 70.0  # degrees (yaw before body turns)
+@export var head_rotation_speed: float = 10.0
+@export var body_rotation_speed: float = 8.0  # How fast body catches up to camera
+@export var free_look_threshold: float = 45.0  # Degrees of head turn before body follows
 
 # IK System
 @export var ik_enabled: bool = true
@@ -36,10 +38,12 @@ class_name CharacterController
 
 # Internal variables
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
-var camera_rotation: Vector2 = Vector2.ZERO
+var camera_rotation: Vector2 = Vector2.ZERO  # Camera/head target rotation
+var body_rotation_y: float = 0.0  # Actual body Y rotation
 var head_bone_id: int = -1
 var neck_bone_id: int = -1
 var original_head_pose: Transform3D
+var original_neck_pose: Transform3D
 var mesh_instance: MeshInstance3D
 
 func _ready():
@@ -55,6 +59,8 @@ func _ready():
 		neck_bone_id = skeleton.find_bone(neck_bone_name)
 		if head_bone_id >= 0:
 			original_head_pose = skeleton.get_bone_pose(head_bone_id)
+		if neck_bone_id >= 0:
+			original_neck_pose = skeleton.get_bone_pose(neck_bone_id)
 
 		# Find mesh instance for visibility control
 		mesh_instance = find_mesh_instance(skeleton)
@@ -152,12 +158,26 @@ func _physics_process(delta):
 	# Get input direction
 	var input_dir = Input.get_vector("move_left", "move_right", "move_forward", "move_back")
 
-	# Calculate movement direction
-	var direction = Vector3.ZERO
-	direction = (transform.basis * Vector3(input_dir.x, 0, input_dir.y)).normalized()
+	# Update body rotation - smoothly follow camera or snap when moving
+	var head_yaw_difference = angle_difference(body_rotation_y, camera_rotation.y)
 
-	# Rotate character with camera (Y axis only for body)
-	rotation.y = camera_rotation.y
+	# If moving, body faces movement direction immediately
+	# If standing still, body turns when head exceeds threshold
+	if input_dir.length() > 0.1:
+		# When moving, body follows camera direction
+		body_rotation_y = lerp_angle(body_rotation_y, camera_rotation.y, body_rotation_speed * delta)
+	else:
+		# When standing still, only turn body if head turned too far
+		if abs(head_yaw_difference) > deg_to_rad(free_look_threshold):
+			body_rotation_y = lerp_angle(body_rotation_y, camera_rotation.y, body_rotation_speed * delta * 0.5)
+
+	# Apply body rotation
+	rotation.y = body_rotation_y
+
+	# Calculate movement direction based on body rotation
+	var direction = Vector3.ZERO
+	if input_dir.length() > 0.1:
+		direction = (transform.basis * Vector3(input_dir.x, 0, input_dir.y)).normalized()
 
 	# Apply movement
 	var current_speed = sprint_speed if Input.is_action_pressed("sprint") else walk_speed
@@ -176,22 +196,42 @@ func _physics_process(delta):
 		_update_head_look(delta)
 
 func _update_head_look(delta):
-	# Get the camera pitch rotation
-	var head_rotation_x = clamp(camera_rotation.x,
+	# Calculate head rotation relative to body
+	var head_yaw_offset = angle_difference(body_rotation_y, camera_rotation.y)
+
+	# Clamp head rotations to limits
+	var head_pitch = clamp(camera_rotation.x,
 		deg_to_rad(-max_head_rotation_x),
 		deg_to_rad(max_head_rotation_x))
 
-	# Create rotation for head bone
-	var head_rotation = Quaternion(Vector3.RIGHT, head_rotation_x)
+	var head_yaw = clamp(head_yaw_offset,
+		deg_to_rad(-max_head_rotation_y),
+		deg_to_rad(max_head_rotation_y))
 
-	# Get current pose and apply rotation
-	var current_pose = skeleton.get_bone_pose(head_bone_id)
-	var target_rotation = Basis(head_rotation)
+	# Apply rotation to neck (contributes to yaw and some pitch)
+	if neck_bone_id >= 0:
+		var neck_pose = skeleton.get_bone_pose(neck_bone_id)
+		var neck_target = Basis()
+		# Neck contributes 40% of the yaw rotation
+		neck_target = neck_target.rotated(Vector3.UP, head_yaw * 0.4)
+		# Neck contributes 30% of pitch
+		neck_target = neck_target.rotated(Vector3.RIGHT, head_pitch * 0.3)
+		neck_target = neck_target * original_neck_pose.basis
 
-	# Smoothly interpolate
-	current_pose.basis = current_pose.basis.slerp(target_rotation * original_head_pose.basis, head_rotation_speed * delta)
+		neck_pose.basis = neck_pose.basis.slerp(neck_target, head_rotation_speed * delta)
+		skeleton.set_bone_pose(neck_bone_id, neck_pose)
 
-	skeleton.set_bone_pose(head_bone_id, current_pose)
+	# Apply rotation to head (remaining rotation)
+	var head_pose = skeleton.get_bone_pose(head_bone_id)
+	var head_target = Basis()
+	# Head contributes 60% of yaw rotation
+	head_target = head_target.rotated(Vector3.UP, head_yaw * 0.6)
+	# Head contributes 70% of pitch
+	head_target = head_target.rotated(Vector3.RIGHT, head_pitch * 0.7)
+	head_target = head_target * original_head_pose.basis
+
+	head_pose.basis = head_pose.basis.slerp(head_target, head_rotation_speed * delta)
+	skeleton.set_bone_pose(head_bone_id, head_pose)
 
 func toggle_ragdoll():
 	if not physical_skeleton:

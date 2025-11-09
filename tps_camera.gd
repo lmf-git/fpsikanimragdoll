@@ -15,7 +15,7 @@ func _ready():
 		target = get_parent()
 	current_distance = follow_distance
 
-func _process(delta):
+func _physics_process(delta):
 	if not target:
 		return
 
