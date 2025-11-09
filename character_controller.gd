@@ -248,9 +248,46 @@ func _create_ragdoll_bones():
 		physical_bone.joint_type = PhysicalBone3D.JOINT_TYPE_CONE
 		physical_bone.joint_offset = Transform3D()  # No offset from bone
 
-		# Joint limits - allow realistic movement
-		physical_bone.set("joint_constraints/swing_span", deg_to_rad(45))
-		physical_bone.set("joint_constraints/twist_span", deg_to_rad(30))
+		# Joint limits - specific to bone type for realistic movement
+		var swing_limit = deg_to_rad(45)
+		var twist_limit = deg_to_rad(30)
+
+		# Tighter constraints for specific bone types
+		if bone_suffix in ["Head"]:
+			# Head - limited rotation
+			swing_limit = deg_to_rad(25)
+			twist_limit = deg_to_rad(15)
+		elif bone_suffix in ["Neck"]:
+			# Neck - moderate rotation
+			swing_limit = deg_to_rad(30)
+			twist_limit = deg_to_rad(20)
+		elif "Shoulder" in bone_suffix:
+			# Shoulders - very limited
+			swing_limit = deg_to_rad(20)
+			twist_limit = deg_to_rad(10)
+		elif bone_suffix in ["Upper_Leg", "L_Upper_Leg", "R_Upper_Leg"]:
+			# Upper legs (hips) - limited rotation
+			swing_limit = deg_to_rad(35)
+			twist_limit = deg_to_rad(15)
+		elif bone_suffix in ["Lower_Leg", "L_Lower_Leg", "R_Lower_Leg"]:
+			# Lower legs (knees) - hinge-like, very limited twist
+			swing_limit = deg_to_rad(70)  # Can bend forward
+			twist_limit = deg_to_rad(5)   # Almost no twist
+		elif bone_suffix in ["Upper_Arm", "L_Upper_Arm", "R_Upper_Arm"]:
+			# Upper arms - good range
+			swing_limit = deg_to_rad(60)
+			twist_limit = deg_to_rad(40)
+		elif bone_suffix in ["Lower_Arm", "L_Lower_Arm", "R_Lower_Arm"]:
+			# Lower arms (elbows) - hinge-like
+			swing_limit = deg_to_rad(75)
+			twist_limit = deg_to_rad(10)
+		elif "Finger" in bone_suffix or "Thumb" in bone_suffix or "Index" in bone_suffix or "Middle" in bone_suffix or "Ring" in bone_suffix or "Little" in bone_suffix:
+			# Fingers - small range
+			swing_limit = deg_to_rad(45)
+			twist_limit = deg_to_rad(5)
+
+		physical_bone.set("joint_constraints/swing_span", swing_limit)
+		physical_bone.set("joint_constraints/twist_span", twist_limit)
 
 		# Soften joints for more natural movement
 		physical_bone.set("joint_constraints/bias", 0.3)
@@ -427,8 +464,8 @@ func _update_head_look(delta):
 		var neck_target = Basis()
 		# Neck contributes 40% of the yaw rotation
 		neck_target = neck_target.rotated(Vector3.UP, head_yaw * 0.4)
-		# Neck contributes 30% of pitch
-		neck_target = neck_target.rotated(Vector3.RIGHT, head_pitch * 0.3)
+		# Neck contributes 30% of pitch (use local right axis after yaw rotation)
+		neck_target = neck_target.rotated(neck_target.x, head_pitch * 0.3)
 		neck_target = neck_target * original_neck_pose.basis
 
 		neck_pose.basis = neck_pose.basis.slerp(neck_target, head_rotation_speed * delta)
@@ -439,8 +476,8 @@ func _update_head_look(delta):
 	var head_target = Basis()
 	# Head contributes 60% of yaw rotation
 	head_target = head_target.rotated(Vector3.UP, head_yaw * 0.6)
-	# Head contributes 70% of pitch
-	head_target = head_target.rotated(Vector3.RIGHT, head_pitch * 0.7)
+	# Head contributes 70% of pitch (use local right axis after yaw rotation)
+	head_target = head_target.rotated(head_target.x, head_pitch * 0.7)
 	head_target = head_target * original_head_pose.basis
 
 	head_pose.basis = head_pose.basis.slerp(head_target, head_rotation_speed * delta)

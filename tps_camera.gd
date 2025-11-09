@@ -31,8 +31,8 @@ func _physics_process(delta):
 	# Calculate desired camera position
 	var target_pos = target.global_transform.origin + Vector3(0, follow_height, 0)
 
-	# Calculate camera offset based on rotation
-	var offset = Vector3(0, 0, follow_distance)
+	# Calculate camera offset based on rotation (negative Z for behind character)
+	var offset = Vector3(0, 0, -follow_distance)
 	var rotation_transform = Transform3D()
 	rotation_transform = rotation_transform.rotated(Vector3.UP, cam_rotation.y)
 	rotation_transform = rotation_transform.rotated(rotation_transform.basis.x, cam_rotation.x)
