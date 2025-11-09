@@ -389,11 +389,11 @@ func _create_ragdoll_bones():
 			damping = 1.0
 			bias = 1.0
 		elif bone_suffix in ["Upper_Leg", "L_Upper_Leg", "R_Upper_Leg"]:
-			# Upper legs - very restricted hip
-			swing_limit = deg_to_rad(3)
-			twist_limit = deg_to_rad(0.5)
-			damping = 0.98
-			bias = 0.98
+			# Upper legs - EXTREMELY restricted hip to prevent body spinning
+			swing_limit = deg_to_rad(0.5)  # Almost locked
+			twist_limit = deg_to_rad(0)    # No twist at all
+			damping = 1.0
+			bias = 1.0
 		elif bone_suffix in ["Lower_Leg", "L_Lower_Leg", "R_Lower_Leg"]:
 			# HINGE: Lower legs (knees) - one direction only
 			# For hinge joints, only swing matters
@@ -402,11 +402,11 @@ func _create_ragdoll_bones():
 			damping = 0.95
 			bias = 0.95
 		elif bone_suffix in ["Foot", "L_Foot", "R_Foot"]:
-			# HINGE: Feet/ankles - only bend up/down realistically
-			swing_limit = deg_to_rad(30)  # Can flex up and down
-			twist_limit = deg_to_rad(0)   # No twist on hinge
-			damping = 0.95
-			bias = 0.95
+			# HINGE: Feet/ankles - VERY tight to prevent body rotation
+			swing_limit = deg_to_rad(5)  # Minimal flex only
+			twist_limit = deg_to_rad(0)  # No twist on hinge
+			damping = 1.0
+			bias = 1.0
 		elif bone_suffix in ["Toes", "L_Toes", "R_Toes"]:
 			# Toes - almost locked
 			swing_limit = deg_to_rad(1)
@@ -450,8 +450,8 @@ func _create_ragdoll_bones():
 			physical_bone.set("joint_constraints/twist_span", twist_limit)
 
 		# EXTREMELY stiff joints - nearly rigid skeleton
-		# For torso and upper body bones, apply maximum constraint enforcement
-		if bone_suffix in ["Hips", "Spine", "Chest", "Upper_Chest", "Neck", "Head", "Shoulder", "L_Shoulder", "R_Shoulder", "Upper_Arm", "L_Upper_Arm", "R_Upper_Arm"]:
+		# For torso, upper body, and leg bones, apply maximum constraint enforcement
+		if bone_suffix in ["Hips", "Spine", "Chest", "Upper_Chest", "Neck", "Head", "Shoulder", "L_Shoulder", "R_Shoulder", "Upper_Arm", "L_Upper_Arm", "R_Upper_Arm", "Upper_Leg", "L_Upper_Leg", "R_Upper_Leg", "Foot", "L_Foot", "R_Foot"]:
 			# Maximum constraint enforcement - absolutely no give
 			physical_bone.set("joint_constraints/bias", 1.0)
 			physical_bone.set("joint_constraints/damping", 1.0)
@@ -471,8 +471,8 @@ func _create_ragdoll_bones():
 		physical_bone.friction = 1.0  # Maximum friction
 		physical_bone.bounce = 0.0
 
-		# Apply extreme damping for upper body to prevent any rotation
-		if bone_suffix in ["Hips", "Spine", "Chest", "Upper_Chest", "Neck", "Head", "Shoulder", "L_Shoulder", "R_Shoulder", "Upper_Arm", "L_Upper_Arm", "R_Upper_Arm"]:
+		# Apply extreme damping for upper body and legs to prevent any rotation
+		if bone_suffix in ["Hips", "Spine", "Chest", "Upper_Chest", "Neck", "Head", "Shoulder", "L_Shoulder", "R_Shoulder", "Upper_Arm", "L_Upper_Arm", "R_Upper_Arm", "Upper_Leg", "L_Upper_Leg", "R_Upper_Leg", "Foot", "L_Foot", "R_Foot"]:
 			physical_bone.linear_damp = 1.0  # Maximum resistance to movement
 			physical_bone.angular_damp = 1.0  # Maximum resistance to rotation
 		else:
@@ -763,11 +763,11 @@ func _attach_weapon_to_ragdoll_hand():
 		return
 
 	# Find the physical bone for the right hand
-	var right_hand_bone_name = skeleton.get_bone_name(right_hand_bone_id)
+	var hand_bone_name = skeleton.get_bone_name(right_hand_bone_id)
 	var physical_hand_bone = null
 
 	for child in skeleton.get_children():
-		if child is PhysicalBone3D and child.bone_name == right_hand_bone_name:
+		if child is PhysicalBone3D and child.bone_name == hand_bone_name:
 			physical_hand_bone = child
 			break
 
@@ -855,11 +855,11 @@ func _attach_camera_to_ragdoll_head():
 		return
 
 	# Find the physical bone for the head
-	var head_bone_name = skeleton.get_bone_name(head_bone_id)
+	var bone_name = skeleton.get_bone_name(head_bone_id)
 	var physical_head_bone = null
 
 	for child in skeleton.get_children():
-		if child is PhysicalBone3D and child.bone_name == head_bone_name:
+		if child is PhysicalBone3D and child.bone_name == bone_name:
 			physical_head_bone = child
 			break
 
@@ -1000,95 +1000,66 @@ func _update_weapon_position():
 		return
 
 	var ik_targets_node = get_node_or_null("IKTargets")
+	if not ik_targets_node:
+		return
 
-	# Determine weapon offset based on state
+	# Get camera transform for positioning IK targets
+	var active_camera = fps_camera if camera_mode == 0 else tps_camera
+	if not active_camera:
+		return
+
+	var camera_transform = active_camera.global_transform
+
+	# Check if character is moving for sway calculation
+	var is_moving = velocity.length() > 0.1
+	current_sway = _calculate_weapon_sway(get_process_delta_time(), is_moving)
+
+	# Determine IK target offset based on weapon state
 	var target_offset = ready_weapon_offset
 	match weapon_state:
 		WeaponState.SHEATHED:
 			target_offset = sheathed_weapon_offset
+			current_sway *= 0.2  # Reduce sway when sheathed
 		WeaponState.READY:
 			target_offset = ready_weapon_offset
 		WeaponState.AIMING:
 			target_offset = aim_weapon_offset
 
-	# Check if character is moving for sway calculation
-	var is_moving = velocity.length() > 0.1
+	# STEP 1: Position right hand IK target relative to camera
+	var right_hand_target = ik_targets_node.get_node_or_null("RightHandTarget")
+	if right_hand_target:
+		var base_offset = target_offset + current_sway
+		var target_pos = camera_transform.origin + camera_transform.basis.z * base_offset.z + camera_transform.basis.x * base_offset.x + camera_transform.basis.y * base_offset.y
+		right_hand_target.global_position = target_pos
 
-	if weapon_state == WeaponState.AIMING or weapon_state == WeaponState.READY:
-		# CAMERA-ALIGNED MODE: Position weapon relative to camera view
-		var active_camera = fps_camera if camera_mode == 0 else tps_camera
-		if active_camera:
-			# Calculate sway
-			current_sway = _calculate_weapon_sway(get_process_delta_time(), is_moving)
+	# STEP 2: Weapon follows right hand bone (after IK has been applied)
+	var right_hand_transform = skeleton.global_transform * skeleton.get_bone_global_pose(right_hand_bone_id)
 
-			# Position weapon in front of camera with offset and sway
-			var camera_transform = active_camera.global_transform
-			var base_offset = target_offset + current_sway
-			var aim_pos = camera_transform.origin + camera_transform.basis.z * base_offset.z + camera_transform.basis.x * base_offset.x + camera_transform.basis.y * base_offset.y
+	# Align weapon rotation to camera direction
+	equipped_weapon.global_transform.basis = camera_transform.basis
 
-			# Align weapon to camera direction
-			equipped_weapon.global_transform.basis = camera_transform.basis
-			equipped_weapon.global_position = aim_pos
-
-			# Update both hand IK targets to weapon grips when in camera mode
-			if ik_targets_node:
-				# Right hand to main grip (always for all weapons)
-				if equipped_weapon.main_grip:
-					var right_hand_target = ik_targets_node.get_node_or_null("RightHandTarget")
-					if right_hand_target:
-						right_hand_target.global_position = equipped_weapon.main_grip.global_position
-
-				# Left hand positioning
-				var left_hand_target = ik_targets_node.get_node_or_null("LeftHandTarget")
-				if left_hand_target:
-					if equipped_weapon.is_two_handed and equipped_weapon.secondary_grip:
-						# Two-handed: left hand to foregrip
-						left_hand_target.global_position = equipped_weapon.secondary_grip.global_position
-					elif weapon_state == WeaponState.AIMING:
-						# Pistol aiming: left hand supports right hand (under pistol)
-						var support_offset = Vector3(-0.08, -0.08, 0)  # Slightly left, down, same depth
-						left_hand_target.global_position = equipped_weapon.main_grip.global_position + equipped_weapon.global_transform.basis * support_offset
-					else:
-						# Pistol ready: left hand at relaxed ready position
-						var ready_offset = Vector3(-0.2, -0.15, -0.1)  # Left, down, back
-						left_hand_target.global_position = equipped_weapon.global_position + equipped_weapon.global_transform.basis * ready_offset
+	# Position weapon so its grip aligns with the right hand bone
+	if equipped_weapon.main_grip:
+		var grip_local_pos = equipped_weapon.main_grip.position
+		var grip_world_offset = equipped_weapon.global_transform.basis * grip_local_pos
+		equipped_weapon.global_position = right_hand_transform.origin - grip_world_offset
 	else:
-		# SHEATHED MODE: Weapon lowered at side, minimal IK
-		var right_hand_transform = skeleton.global_transform * skeleton.get_bone_global_pose(right_hand_bone_id)
+		# Fallback: if no grip point defined, use simple offset
+		equipped_weapon.global_position = right_hand_transform.origin
 
-		# Calculate sway even when sheathed (minimal)
-		current_sway = _calculate_weapon_sway(get_process_delta_time(), is_moving) * 0.2  # Reduce sway when sheathed
-
-		# Position weapon at side with offset and minimal sway
-		if equipped_weapon.main_grip:
-			# Calculate offset from weapon origin to main grip in weapon's local space
-			var grip_local_pos = equipped_weapon.main_grip.position
-
-			# First set rotation to align with hand
-			equipped_weapon.global_transform.basis = right_hand_transform.basis
-
-			# Then position weapon so grip aligns with hand, with sway
-			var grip_world_offset = equipped_weapon.global_transform.basis * (grip_local_pos + current_sway)
-			equipped_weapon.global_position = right_hand_transform.origin - grip_world_offset
+	# STEP 3: Update left hand IK target ONLY for two-handed weapons (rifles)
+	var left_hand_target = ik_targets_node.get_node_or_null("LeftHandTarget")
+	if left_hand_target:
+		if equipped_weapon.is_two_handed and equipped_weapon.secondary_grip:
+			# Two-handed weapon (rifle): left hand to foregrip
+			left_hand_target.global_position = equipped_weapon.secondary_grip.global_position
 		else:
-			# Fallback: if no grip point defined, use simple offset
-			var weapon_offset = Vector3(0, -0.05, 0.1) + current_sway
-			equipped_weapon.global_position = right_hand_transform.origin + right_hand_transform.basis * weapon_offset
-			equipped_weapon.global_transform.basis = right_hand_transform.basis
-
-		# Update IK targets for two-handed weapons even when sheathed
-		if ik_targets_node and equipped_weapon.is_two_handed:
-			# Right hand to main grip for two-handed weapons
-			if equipped_weapon.main_grip:
-				var right_hand_target = ik_targets_node.get_node_or_null("RightHandTarget")
-				if right_hand_target:
-					right_hand_target.global_position = equipped_weapon.main_grip.global_position
-
-			# Left hand to secondary grip (foregrip)
-			if equipped_weapon.secondary_grip:
-				var left_hand_target = ik_targets_node.get_node_or_null("LeftHandTarget")
-				if left_hand_target:
-					left_hand_target.global_position = equipped_weapon.secondary_grip.global_position
+			# Pistol: disable left hand IK by moving target to default position
+			# This allows left hand to use idle animation instead
+			var left_hand_bone_id = skeleton.find_bone("characters3d.com___L_Hand")
+			if left_hand_bone_id >= 0:
+				var left_hand_rest = skeleton.global_transform * skeleton.get_bone_rest(left_hand_bone_id).origin
+				left_hand_target.global_position = left_hand_rest
 
 func _process(_delta):
 	# Update weapon position to follow hand
