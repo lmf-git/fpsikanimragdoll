@@ -1084,9 +1084,10 @@ func _update_weapon_ik_targets():
 			# Fallback to character position if no chest bone
 			anchor_transform = global_transform
 
-		# Position hand relative to body/chest, but rotate offset by camera yaw for aiming
-		# This keeps the weapon near the body but lets it follow camera look direction
-		var body_basis = Basis(Vector3.UP, camera_rotation.y)  # Only yaw, not pitch
+		# Position hand relative to body/chest using CHARACTER'S facing direction
+		# Use body_rotation_y (where character faces) not camera_rotation.y (where camera looks)
+		# This prevents hand from moving left/right when camera orbits in TPS
+		var body_basis = Basis(Vector3.UP, body_rotation_y)  # Character's facing, not camera
 		var target_pos = anchor_transform.origin + body_basis * base_offset
 		right_hand_target.global_position = target_pos
 
