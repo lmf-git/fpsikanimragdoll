@@ -33,10 +33,10 @@ func _run():
 			print("  Removing: ", child.name)
 			to_remove.append(child)
 
-	# Remove them
+	# Remove them - note: in EditorScript we can remove directly
 	for node in to_remove:
-		skeleton.remove_child(node)
-		node.queue_free()
+		node.get_parent().remove_child(node)
+		node.free()  # Use free() instead of queue_free() in editor scripts
 
 	print("\nCreating PhysicalBoneSimulator3D...")
 	var simulator = PhysicalBoneSimulator3D.new()

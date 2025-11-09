@@ -49,11 +49,11 @@ func _physics_process(_delta):
 
 	# Apply camera rotation
 	# In Godot, cameras look along -Z by default
-	# We need to apply yaw then pitch
+	# Add PI to yaw to make camera face forward (character model faces +Z)
 	var camera_transform = Transform3D()
 
-	# Apply yaw (rotate around Y axis)
-	camera_transform = camera_transform.rotated(Vector3.UP, cam_rotation.y)
+	# Apply yaw (rotate around Y axis) - add PI to flip to face forward
+	camera_transform = camera_transform.rotated(Vector3.UP, cam_rotation.y + PI)
 
 	# Apply pitch (rotate around the local right axis which is X)
 	camera_transform = camera_transform.rotated(camera_transform.basis.x, cam_rotation.x)
