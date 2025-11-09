@@ -350,10 +350,14 @@ func _create_ragdoll_bones():
 			debug_mesh.owner = physical_bone
 
 		# CRITICAL: Configure joint to connect to parent bone
-		# Use HINGE joints for knees and elbows, CONE for everything else
+		# Use NONE for torso (fixed), HINGE for knees/elbows, CONE for everything else
 		var use_hinge = bone_suffix in ["Lower_Leg", "L_Lower_Leg", "R_Lower_Leg", "Lower_Arm", "L_Lower_Arm", "R_Lower_Arm"]
+		var use_none = bone_suffix in ["Hips", "Spine", "Chest", "Upper_Chest", "Neck", "Head", "Shoulder", "L_Shoulder", "R_Shoulder"]
 
-		if use_hinge:
+		if use_none:
+			# Fixed joint - no movement at all
+			physical_bone.joint_type = PhysicalBone3D.JOINT_TYPE_NONE
+		elif use_hinge:
 			physical_bone.joint_type = PhysicalBone3D.JOINT_TYPE_HINGE
 		else:
 			physical_bone.joint_type = PhysicalBone3D.JOINT_TYPE_CONE
@@ -448,7 +452,10 @@ func _create_ragdoll_bones():
 			bias = 0.998
 
 		# Apply limits based on joint type
-		if use_hinge:
+		if use_none:
+			# No joint constraints needed for NONE type - bone is fixed to parent
+			pass
+		elif use_hinge:
 			# Hinge joints use different constraint properties
 			physical_bone.set("joint_constraints/angular_limit_lower", -swing_limit)
 			physical_bone.set("joint_constraints/angular_limit_upper", 0)  # Only bend one way
