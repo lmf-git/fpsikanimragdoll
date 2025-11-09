@@ -41,9 +41,10 @@ transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0, 0)
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.6, 0)
 current = true
 fov = 90.0
+near = 0.01
 script = ExtResource("3")
 head_bone_name = "characters3d.com___Head"
-head_offset = Vector3(0, 0.1, 0.05)
+head_offset = Vector3(0, 0.1, 0.15)
 
 [node name="TPSCamera" type="Camera3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 3)
