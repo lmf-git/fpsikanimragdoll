@@ -339,6 +339,17 @@ func _create_ik_system():
 	print("Found targets - LH: ", left_hand_target, ", RH: ", right_hand_target,
 	      ", LF: ", left_foot_target, ", RF: ", right_foot_target)
 
+	# Create elbow pole targets for better IK solving
+	var left_elbow_pole = Node3D.new()
+	left_elbow_pole.name = "LeftElbowPole"
+	ik_targets_node.add_child(left_elbow_pole)
+	left_elbow_pole.position = Vector3(-0.3, 1.0, 0.5)  # To the left, forward of body
+
+	var right_elbow_pole = Node3D.new()
+	right_elbow_pole.name = "RightElbowPole"
+	ik_targets_node.add_child(right_elbow_pole)
+	right_elbow_pole.position = Vector3(0.3, 1.0, 0.5)  # To the right, forward of body
+
 	# Create LeftHandIK
 	if left_hand_target:
 		left_hand_ik = SkeletonIK3D.new()
@@ -347,9 +358,11 @@ func _create_ik_system():
 		left_hand_ik.tip_bone = "characters3d.com___L_Hand"
 		left_hand_ik.interpolation = 1.0  # Instant IK solving for responsive weapon movement
 		left_hand_ik.max_iterations = 20  # More iterations for better accuracy
+		left_hand_ik.use_magnet = true  # Enable pole target
 		skeleton.add_child(left_hand_ik)
 		left_hand_ik.set_target_node(left_hand_target.get_path())
-		print("Created LeftHandIK")
+		left_hand_ik.set_magnet_position(left_elbow_pole.global_position)
+		print("Created LeftHandIK with elbow pole")
 
 	# Create RightHandIK
 	if right_hand_target:
@@ -359,9 +372,11 @@ func _create_ik_system():
 		right_hand_ik.tip_bone = "characters3d.com___R_Hand"
 		right_hand_ik.interpolation = 1.0  # Instant IK solving for responsive weapon movement
 		right_hand_ik.max_iterations = 20  # More iterations for better accuracy
+		right_hand_ik.use_magnet = true  # Enable pole target
 		skeleton.add_child(right_hand_ik)
 		right_hand_ik.set_target_node(right_hand_target.get_path())
-		print("Created RightHandIK")
+		right_hand_ik.set_magnet_position(right_elbow_pole.global_position)
+		print("Created RightHandIK with elbow pole")
 
 	# Create LeftFootIK
 	if left_foot_target:
@@ -1579,7 +1594,7 @@ func _update_weapon_ik_targets():
 		# Convert rotation difference to horizontal hand offset
 		# Multiply by distance from body to get more shift when looking further away
 		var horizontal_shift = sin(rotation_diff) * abs(base_offset.z) * 0.8  # 80% of forward distance
-		base_offset.x = horizontal_shift
+		base_offset.x += horizontal_shift  # Add to existing offset, don't replace it
 
 		# Use chest bone as anchor point for body-relative positioning
 		var anchor_transform: Transform3D
@@ -1652,6 +1667,24 @@ func _update_weapon_ik_targets():
 					var left_hand_rest = skeleton.global_transform * skeleton.get_bone_rest(l_hand_id).origin
 					left_hand_target.global_position = left_hand_rest
 
+	# Update elbow pole positions to guide arm bending
+	var left_elbow_pole = ik_targets_node.get_node_or_null("LeftElbowPole")
+	var right_elbow_pole = ik_targets_node.get_node_or_null("RightElbowPole")
+
+	if right_hand_target and right_elbow_pole:
+		# Position right elbow pole to guide elbow to bend outward
+		# Place it to the right and slightly forward of the hand target
+		var body_basis = Basis(Vector3.UP, body_rotation_y)
+		var elbow_offset = Vector3(0.2, 0.0, -0.2)  # Right and forward
+		right_elbow_pole.global_position = right_hand_target.global_position + body_basis * elbow_offset
+
+	if left_hand_target and left_elbow_pole:
+		# Position left elbow pole to guide elbow to bend outward
+		# Place it to the left and slightly forward of the hand target
+		var body_basis = Basis(Vector3.UP, body_rotation_y)
+		var elbow_offset = Vector3(-0.2, 0.0, -0.2)  # Left and forward
+		left_elbow_pole.global_position = left_hand_target.global_position + body_basis * elbow_offset
+
 func _update_weapon_to_hand():
 	"""Position weapon to follow IK-transformed hand bone (called AFTER IK is applied)"""
 	if not equipped_weapon:
@@ -1714,6 +1747,17 @@ func _process(_delta):
 		_update_weapon_ik_targets()
 
 	# STEP 2: Apply IK - start() moves bones to targets
+	# Update elbow pole magnet positions before applying IK
+	var ik_targets_node = get_node_or_null("IKTargets")
+	if ik_targets_node:
+		var left_elbow_pole = ik_targets_node.get_node_or_null("LeftElbowPole")
+		var right_elbow_pole = ik_targets_node.get_node_or_null("RightElbowPole")
+
+		if right_hand_ik and right_elbow_pole:
+			right_hand_ik.set_magnet_position(right_elbow_pole.global_position)
+		if left_hand_ik and left_elbow_pole:
+			left_hand_ik.set_magnet_position(left_elbow_pole.global_position)
+
 	if ik_enabled:
 		# IK enabled - apply foot IK always
 		if left_foot_ik:
