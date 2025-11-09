@@ -34,7 +34,6 @@ class_name CharacterController
 
 # Ragdoll
 @export var ragdoll_enabled: bool = false
-@export var physical_skeleton: PhysicalBoneSimulator3D
 
 # Internal variables
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
@@ -65,10 +64,6 @@ func _ready():
 		# Find mesh instance for visibility control
 		mesh_instance = find_mesh_instance(skeleton)
 
-		# Find physical skeleton if not set
-		if not physical_skeleton:
-			physical_skeleton = find_physical_skeleton(skeleton)
-
 	# Set initial camera
 	_switch_camera(camera_mode)
 
@@ -86,15 +81,6 @@ func find_mesh_instance(node: Node) -> MeshInstance3D:
 		return node
 	for child in node.get_children():
 		var result = find_mesh_instance(child)
-		if result:
-			return result
-	return null
-
-func find_physical_skeleton(node: Node) -> PhysicalBoneSimulator3D:
-	if node is PhysicalBoneSimulator3D:
-		return node
-	for child in node.get_children():
-		var result = find_physical_skeleton(child)
 		if result:
 			return result
 	return null
@@ -236,30 +222,18 @@ func _update_head_look(delta):
 
 func toggle_ragdoll():
 	print("=== Ragdoll Toggle Debug ===")
-	print("Physical skeleton: ", physical_skeleton)
 
 	if not skeleton:
 		print("ERROR: No skeleton found!")
 		return
 
-	# Try to find physical bones
+	# Count physical bones
 	var physical_bones = []
 	for child in skeleton.get_children():
 		if child is PhysicalBone3D:
 			physical_bones.append(child)
-		if child is PhysicalBoneSimulator3D:
-			physical_skeleton = child
-			print("Found PhysicalBoneSimulator3D: ", child.name)
 
 	print("Found ", physical_bones.size(), " physical bones")
-
-	if not physical_skeleton:
-		print("ERROR: PhysicalBoneSimulator3D not found!")
-		print("Creating PhysicalBoneSimulator3D...")
-		physical_skeleton = PhysicalBoneSimulator3D.new()
-		physical_skeleton.name = "PhysicalBoneSimulator3D"
-		skeleton.add_child(physical_skeleton)
-		print("PhysicalBoneSimulator3D created")
 
 	if physical_bones.size() == 0:
 		print("ERROR: No PhysicalBone3D nodes found!")
@@ -272,14 +246,15 @@ func toggle_ragdoll():
 
 	if ragdoll_enabled:
 		print("ENABLING RAGDOLL - Starting physics simulation")
-		physical_skeleton.physical_bones_start_simulation()
+		# Use skeleton's built-in ragdoll methods (no PhysicalBoneSimulator3D needed)
+		skeleton.physical_bones_start_simulation()
 		# Disable character collision and control
 		collision_layer = 0
 		collision_mask = 0
 		set_physics_process(false)
 	else:
 		print("DISABLING RAGDOLL - Stopping physics simulation")
-		physical_skeleton.physical_bones_stop_simulation()
+		skeleton.physical_bones_stop_simulation()
 		collision_layer = 1
 		collision_mask = 1
 		set_physics_process(true)
