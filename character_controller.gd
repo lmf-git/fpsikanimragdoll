@@ -46,6 +46,7 @@ var original_neck_pose: Transform3D
 var mesh_instance: MeshInstance3D
 
 func _ready():
+	print("\n=== Character Controller Ready ===")
 	# Capture mouse
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 
@@ -53,9 +54,19 @@ func _ready():
 	if not skeleton:
 		skeleton = find_skeleton(self)
 
+	print("Skeleton found: ", skeleton)
+
 	if skeleton:
+		print("Skeleton bone count: ", skeleton.get_bone_count())
+		print("Looking for head bone: ", head_bone_name)
+		print("Looking for neck bone: ", neck_bone_name)
+
 		head_bone_id = skeleton.find_bone(head_bone_name)
 		neck_bone_id = skeleton.find_bone(neck_bone_name)
+
+		print("Head bone ID: ", head_bone_id)
+		print("Neck bone ID: ", neck_bone_id)
+
 		if head_bone_id >= 0:
 			original_head_pose = skeleton.get_bone_pose(head_bone_id)
 		if neck_bone_id >= 0:
@@ -63,9 +74,21 @@ func _ready():
 
 		# Find mesh instance for visibility control
 		mesh_instance = find_mesh_instance(skeleton)
+		print("Mesh instance: ", mesh_instance)
+
+		# Debug: List all bones
+		print("\n=== All Skeleton Bones ===")
+		for i in range(skeleton.get_bone_count()):
+			print("  [", i, "] ", skeleton.get_bone_name(i))
+		print("=== End Bone List ===\n")
+
+	print("FPS Camera: ", fps_camera)
+	print("TPS Camera: ", tps_camera)
+	print("Initial camera mode: ", camera_mode)
 
 	# Set initial camera
 	_switch_camera(camera_mode)
+	print("=== End Character Controller Ready ===\n")
 
 func find_skeleton(node: Node) -> Skeleton3D:
 	if node is Skeleton3D:
@@ -92,13 +115,23 @@ func _input(event):
 		camera_rotation.x = clamp(camera_rotation.x, deg_to_rad(-89), deg_to_rad(89))
 
 	if event.is_action_pressed("toggle_camera"):
+		print("\n=== TOGGLE CAMERA PRESSED ===")
+		print("Current camera_mode: ", camera_mode)
 		camera_mode = (camera_mode + 1) % 2
+		print("New camera_mode: ", camera_mode)
 		_switch_camera(camera_mode)
 		print("Camera mode: ", "FPS" if camera_mode == 0 else "TPS")
+		print("=== END TOGGLE ===\n")
 
 	if event.is_action_pressed("toggle_ik"):
+		print("\n=== TOGGLE IK PRESSED ===")
 		ik_enabled = !ik_enabled
 		print("IK enabled: ", ik_enabled)
+		print("Left hand IK: ", left_hand_ik)
+		print("Right hand IK: ", right_hand_ik)
+		print("Left foot IK: ", left_foot_ik)
+		print("Right foot IK: ", right_foot_ik)
+		print("=== END IK TOGGLE ===\n")
 
 	if event.is_action_pressed("toggle_ragdoll"):
 		toggle_ragdoll()
@@ -110,8 +143,14 @@ func _input(event):
 			Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 
 func _switch_camera(mode: int):
+	print("\n=== _switch_camera called ===")
+	print("Mode: ", mode, " (", "FPS" if mode == 0 else "TPS", ")")
+	print("fps_camera exists: ", fps_camera != null)
+	print("tps_camera exists: ", tps_camera != null)
+
 	if fps_camera and tps_camera:
 		if mode == 0:  # FPS
+			print("Setting FPS camera as current")
 			fps_camera.current = true
 			tps_camera.current = false
 			# Use camera cull mask to hide character body in FPS
@@ -119,16 +158,24 @@ func _switch_camera(mode: int):
 			if mesh_instance:
 				# Move mesh to layer 2
 				mesh_instance.layers = 2
+				print("Mesh moved to layer 2")
 			# FPS camera only sees layer 1 (not character body)
 			fps_camera.cull_mask = 1
 		else:  # TPS
+			print("Setting TPS camera as current")
 			fps_camera.current = false
 			tps_camera.current = true
 			if mesh_instance:
 				# Move mesh back to layer 1
 				mesh_instance.layers = 1
+				print("Mesh moved to layer 1")
 			# TPS camera sees all layers
 			tps_camera.cull_mask = 0xFFFFF
+	else:
+		print("ERROR: One or both cameras are null!")
+		print("fps_camera: ", fps_camera)
+		print("tps_camera: ", tps_camera)
+	print("=== End _switch_camera ===\n")
 
 func _physics_process(delta):
 	if ragdoll_enabled:

@@ -1,6 +1,6 @@
 [gd_scene load_steps=6 format=3 uid="uid://character001"]
 
-[ext_resource type="PackedScene" uid="uid://modelchar" path="res://character.gltf" id="1"]
+[ext_resource type="PackedScene" path="res://character.gltf" id="1"]
 [ext_resource type="Script" path="res://character_controller.gd" id="2"]
 [ext_resource type="Script" path="res://fps_camera.gd" id="3"]
 [ext_resource type="Script" path="res://tps_camera.gd" id="4"]
