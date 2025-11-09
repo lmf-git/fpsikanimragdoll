@@ -1,6 +1,9 @@
-[gd_scene load_steps=5 format=3 uid="uid://world001"]
+[gd_scene load_steps=6 format=3 uid="uid://world001"]
 
 [ext_resource type="PackedScene" uid="uid://character001" path="res://character.tscn" id="1"]
+
+[sub_resource type="LabelSettings" id="LabelSettings_1"]
+font_size = 24
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_1"]
 sky_top_color = Color(0.385, 0.454, 0.55, 1)
@@ -106,13 +109,15 @@ surface_material_override/0 = SubResource("Material_box")
 [node name="HelpLabel" type="Label" parent="UI"]
 offset_left = 10.0
 offset_top = 10.0
-offset_right = 500.0
-offset_bottom = 150.0
+offset_right = 600.0
+offset_bottom = 200.0
+label_settings = SubResource("LabelSettings_1")
 text = "CONTROLS:
 WASD - Move
 Space - Jump
 Shift - Sprint
 Mouse - Look around
-V - Toggle Camera (FPS/TPS)
+V or I - Toggle Camera (FPS/TPS)
+O - Force Third Person Camera
 R - Toggle Ragdoll
 ESC - Release mouse"

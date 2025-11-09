@@ -10,8 +10,11 @@ A complete character controller system for Godot 4.5 featuring:
 
 ### 1. Dual Camera System
 - **FPS Camera**: Positioned at the character's head bone with realistic head movement
+  - Uses visibility layers to prevent seeing own body
+  - Camera direction fixed to point forward correctly
 - **TPS Camera**: Third-person camera with collision detection and smooth following
-- Toggle between cameras with `V` key
+- Toggle between cameras with `V` or `I` keys
+- Force TPS mode with `O` key
 
 ### 2. Head Aiming System
 - Head bone rotates based on camera pitch for realistic aiming
@@ -43,7 +46,8 @@ A complete character controller system for Godot 4.5 featuring:
 | Space | Jump |
 | Shift | Sprint |
 | Mouse | Look around |
-| V | Toggle Camera (FPS/TPS) |
+| V or I | Toggle Camera (FPS/TPS) |
+| O | Force Third Person Camera |
 | R | Toggle Ragdoll |
 | ESC | Release/Capture mouse |
 
@@ -102,19 +106,28 @@ To enable IK on the skeleton:
 
 ### Enabling Ragdoll
 
-The `ragdoll_setup.gd` script provides a helper function to automatically create PhysicalBone3D nodes:
+**IMPORTANT**: Ragdoll requires physical bones to be set up first!
 
+**Easiest Method** - Use the editor script:
+1. Open `character.tscn` in Godot
+2. Go to File → Run (or press Ctrl+Shift+X)
+3. Select `setup_physical_bones.gd`
+4. The script will automatically create all physical bones and the simulator
+
+**Manual Method**:
+1. Select the Skeleton3D node
+2. Right-click → "Create Physical Skeleton"
+3. Adjust collision shapes as needed
+4. Add a PhysicalBoneSimulator3D node as a child of Skeleton3D
+
+**Using Code** - The `ragdoll_setup.gd` provides a helper function:
 ```gdscript
 # In editor or at runtime:
 var skeleton = $Model/Skeleton3D
 var simulator = RagdollSetup.setup_ragdoll(skeleton)
 ```
 
-Or manually:
-1. Select the Skeleton3D node
-2. Right-click → "Create Physical Skeleton"
-3. Adjust collision shapes as needed
-4. Add a PhysicalBoneSimulator3D node as a child of Skeleton3D
+Once set up, press `R` to toggle ragdoll mode during gameplay.
 
 ## Customization
 

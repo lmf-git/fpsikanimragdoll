@@ -59,6 +59,10 @@ func _ready():
 		# Find mesh instance for visibility control
 		mesh_instance = find_mesh_instance(skeleton)
 
+		# Find physical skeleton if not set
+		if not physical_skeleton:
+			physical_skeleton = find_physical_skeleton(skeleton)
+
 	# Set initial camera
 	_switch_camera(camera_mode)
 
@@ -80,6 +84,15 @@ func find_mesh_instance(node: Node) -> MeshInstance3D:
 			return result
 	return null
 
+func find_physical_skeleton(node: Node) -> PhysicalBoneSimulator3D:
+	if node is PhysicalBoneSimulator3D:
+		return node
+	for child in node.get_children():
+		var result = find_physical_skeleton(child)
+		if result:
+			return result
+	return null
+
 func _input(event):
 	if event is InputEventMouseMotion and Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED:
 		camera_rotation.x -= event.relative.y * mouse_sensitivity
@@ -88,6 +101,10 @@ func _input(event):
 
 	if event.is_action_pressed("toggle_camera"):
 		camera_mode = (camera_mode + 1) % 2
+		_switch_camera(camera_mode)
+
+	if event.is_action_pressed("force_tps"):
+		camera_mode = 1  # Force TPS mode
 		_switch_camera(camera_mode)
 
 	if event.is_action_pressed("toggle_ragdoll"):
@@ -177,16 +194,23 @@ func _update_head_look(delta):
 	skeleton.set_bone_pose(head_bone_id, current_pose)
 
 func toggle_ragdoll():
+	if not physical_skeleton:
+		print("Ragdoll not available: PhysicalBoneSimulator3D not found!")
+		print("Run setup_physical_bones.gd editor script to create physical bones.")
+		ragdoll_enabled = false
+		return
+
 	ragdoll_enabled = !ragdoll_enabled
 
-	if physical_skeleton:
-		if ragdoll_enabled:
-			physical_skeleton.physical_bones_start_simulation()
-			# Disable character collision
-			set_physics_process(false)
-		else:
-			physical_skeleton.physical_bones_stop_simulation()
-			set_physics_process(true)
+	if ragdoll_enabled:
+		print("Ragdoll enabled")
+		physical_skeleton.physical_bones_start_simulation()
+		# Disable character collision and control
+		set_physics_process(false)
+	else:
+		print("Ragdoll disabled")
+		physical_skeleton.physical_bones_stop_simulation()
+		set_physics_process(true)
 
 func _process(_delta):
 	# Update IK targets if enabled
