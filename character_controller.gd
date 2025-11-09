@@ -82,8 +82,8 @@ var weapon_state: WeaponState = WeaponState.READY
 var is_weapon_sheathed: bool = false  # Toggle for sheathed state
 
 # Weapon positioning - skeleton-relative offsets
-@export var aim_weapon_offset: Vector3 = Vector3(0.0, 0.35, -0.75)  # Offset when aiming down sights (higher and more forward, centered)
-@export var ready_weapon_offset: Vector3 = Vector3(0.15, 0.1, -0.65)  # Offset when ready/moving (higher and more forward)
+@export var aim_weapon_offset: Vector3 = Vector3(0.0, 0.35, -0.9)  # Offset when aiming down sights (higher and more forward, centered)
+@export var ready_weapon_offset: Vector3 = Vector3(0.15, 0.1, -0.8)  # Offset when ready/moving (higher and more forward)
 @export var sheathed_weapon_offset: Vector3 = Vector3(0.5, -0.6, 0.2)  # Offset when sheathed at side
 @export var weapon_transition_speed: float = 8.0  # Speed of state transitions
 
