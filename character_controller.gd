@@ -1063,6 +1063,11 @@ func _update_weapon_position():
 	if right_hand_target:
 		var base_offset = target_offset + current_sway
 
+		# When weapon is equipped, hand should only move UP/DOWN, not LEFT/RIGHT
+		# This keeps the weapon centered in front of the body
+		if weapon_state == WeaponState.AIMING or weapon_state == WeaponState.READY:
+			base_offset.x = 0.0  # No left/right movement when aiming or ready
+
 		# Use chest bone as anchor point for body-relative positioning
 		var anchor_transform: Transform3D
 		if chest_bone_id >= 0:
@@ -1080,8 +1085,11 @@ func _update_weapon_position():
 	# STEP 2: Weapon follows right hand bone (after IK has been applied)
 	var right_hand_transform = skeleton.global_transform * skeleton.get_bone_global_pose(right_hand_bone_id)
 
-	# Weapon rotation follows RIGHT HAND bone, not camera (fully skeleton-based)
-	equipped_weapon.global_transform.basis = right_hand_transform.basis
+	# Weapon rotation: hand bone rotation with adjustment for proper weapon orientation
+	# The hand bone's natural orientation doesn't match holding a gun, so we need to rotate it
+	# Rotate -90 degrees around X to make barrel point forward (hand points down naturally)
+	var weapon_rotation_offset = Basis(Vector3.RIGHT, deg_to_rad(-90.0))
+	equipped_weapon.global_transform.basis = right_hand_transform.basis * weapon_rotation_offset
 
 	# Position weapon so its grip aligns with the right hand bone
 	if equipped_weapon.main_grip:
