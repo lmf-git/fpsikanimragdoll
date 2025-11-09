@@ -1572,12 +1572,26 @@ func _update_weapon_ik_targets():
 				var left_hand_pos = right_hand_pos + body_basis * foregrip_offset
 				left_hand_target.global_position = left_hand_pos
 		else:
-			# Pistol: disable left hand IK by moving target to default position
-			# This allows left hand to use idle animation instead
-			var l_hand_id = skeleton.find_bone("characters3d.com___L_Hand")
-			if l_hand_id >= 0:
-				var left_hand_rest = skeleton.global_transform * skeleton.get_bone_rest(l_hand_id).origin
-				left_hand_target.global_position = left_hand_rest
+			# Pistol: Position left hand to support pistol grip
+			# Left hand should be below and slightly forward of right hand for proper pistol grip
+			if weapon_state == WeaponState.AIMING or weapon_state == WeaponState.READY:
+				var body_basis = Basis(Vector3.UP, body_rotation_y)
+				var right_hand_pos: Vector3 = right_hand_target.global_position if right_hand_target else global_position
+
+				# Offset for pistol support grip:
+				# - Down: 0.08m below right hand
+				# - Forward: 0.05m forward to wrap under trigger guard
+				# - Slightly left: 0.02m to avoid clipping with right hand
+				var support_grip_offset = Vector3(-0.02, -0.08, -0.05)  # Left, down, forward
+
+				var left_hand_pos = right_hand_pos + body_basis * support_grip_offset
+				left_hand_target.global_position = left_hand_pos
+			else:
+				# When sheathed, use rest position
+				var l_hand_id = skeleton.find_bone("characters3d.com___L_Hand")
+				if l_hand_id >= 0:
+					var left_hand_rest = skeleton.global_transform * skeleton.get_bone_rest(l_hand_id).origin
+					left_hand_target.global_position = left_hand_rest
 
 func _update_weapon_to_hand():
 	"""Position weapon to follow IK-transformed hand bone (called AFTER IK is applied)"""
@@ -1641,37 +1655,49 @@ func _process(_delta):
 		_update_weapon_ik_targets()
 
 	# STEP 2: Apply IK - start() moves bones to targets
-	# IMPORTANT: When holding weapons, always keep hand IK active (even if ik_enabled is false)
-	# This ensures weapons stay in hand regardless of IK toggle state
 	if ik_enabled:
-		# IK enabled - apply all IK
-		if left_hand_ik:
-			left_hand_ik.start()
-		if right_hand_ik:
-			right_hand_ik.start()
+		# IK enabled - apply foot IK always
 		if left_foot_ik:
 			left_foot_ik.start()
 		if right_foot_ik:
 			right_foot_ik.start()
-	else:
-		# IK disabled - but keep hand IK active if holding weapon
+
+		# Hand IK depends on weapon state when weapon is equipped
 		if equipped_weapon:
-			# Weapon equipped - keep hand IK active for weapon holding
-			if right_hand_ik:
-				right_hand_ik.start()  # Right hand must follow weapon position
-			# Left hand IK depends on weapon type
-			if left_hand_ik and equipped_weapon.is_two_handed:
-				left_hand_ik.start()  # Two-handed weapons need left hand IK
-			else:
+			# Right hand IK only when AIMING, use default animation otherwise
+			if weapon_state == WeaponState.AIMING:
+				if right_hand_ik:
+					right_hand_ik.start()
+				# Left hand IK for aiming
 				if left_hand_ik:
-					left_hand_ik.stop()  # One-handed weapons don't need left hand IK
+					left_hand_ik.start()
+			else:
+				# READY or SHEATHED - use default animation for hands
+				if right_hand_ik:
+					right_hand_ik.stop()
+				if left_hand_ik:
+					left_hand_ik.stop()
+		else:
+			# No weapon - use all IK normally
+			if left_hand_ik:
+				left_hand_ik.start()
+			if right_hand_ik:
+				right_hand_ik.start()
+	else:
+		# IK disabled - but keep hand IK active if aiming with weapon
+		if equipped_weapon and weapon_state == WeaponState.AIMING:
+			# Only enable hand IK when actively aiming
+			if right_hand_ik:
+				right_hand_ik.start()
+			if left_hand_ik:
+				left_hand_ik.start()
 			# Disable foot IK when IK is toggled off
 			if left_foot_ik:
 				left_foot_ik.stop()
 			if right_foot_ik:
 				right_foot_ik.stop()
 		else:
-			# No weapon - stop all IK
+			# Stop all IK
 			if left_hand_ik:
 				left_hand_ik.stop()
 			if right_hand_ik:
