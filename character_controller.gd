@@ -1473,20 +1473,28 @@ func _fill_gunshot_buffer():
 	if not playback:
 		return
 
-	# Generate 0.1 second of gunshot sound
-	var samples = 2205  # 0.1s at 22050Hz
+	# Generate 0.15 second of gunshot sound with HEAVY BASS
+	var samples = 3307  # 0.15s at 22050Hz for longer boom
 	for i in range(samples):
 		var t = float(i) / float(samples)
-		# Exponential decay envelope
-		var env = exp(-t * 15.0)
-		# Mix low and high frequencies with noise
-		var low = sin(t * 150.0 * TAU) * 0.6
-		var high = sin(t * 1200.0 * TAU) * 0.3
-		var noise_val = (randf() * 2.0 - 1.0) * 0.3
-		var sample = (low + high + noise_val) * env * 0.8
+
+		# Two-stage envelope: sharp attack, then slower decay for bass
+		var env = exp(-t * 12.0)  # Slower decay for deeper boom
+		var bass_env = exp(-t * 6.0)  # Even slower for sub-bass
+
+		# HEAVY low frequencies for powerful boom
+		var sub_bass = sin(t * 40.0 * TAU) * 0.7 * bass_env  # Deep sub-bass thump
+		var bass = sin(t * 80.0 * TAU) * 0.9 * env  # Main bass boom (was 150Hz)
+		var mid = sin(t * 400.0 * TAU) * 0.4 * env  # Mid-range punch
+		var crack = sin(t * 1500.0 * TAU) * 0.2 * env  # High crack
+		var noise_val = (randf() * 2.0 - 1.0) * 0.2 * env  # Gunpowder noise
+
+		# Mix with emphasis on bass frequencies
+		var sample = (sub_bass + bass + mid + crack + noise_val) * 1.0
+		sample = clamp(sample, -1.0, 1.0)  # Prevent clipping
 		playback.push_frame(Vector2(sample, sample))
 
-	print("Gunshot sound played")
+	print("Gunshot sound played with BOOM")
 
 func _apply_recoil():
 	"""Apply recoil to camera and weapon"""
