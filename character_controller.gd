@@ -2163,12 +2163,18 @@ func _update_weapon_to_hand():
 		var parent_global_basis = parent.global_transform.basis
 		var weapon_local_basis = parent_global_basis.inverse() * weapon_global_basis
 
-		# Set local rotation only (position is handled by grip offset)
-		equipped_weapon.transform.basis = weapon_local_basis
+		# Smooth rotation interpolation to prevent spinning
+		var current_quat = Quaternion(equipped_weapon.transform.basis)
+		var target_quat = Quaternion(weapon_local_basis)
+		var smoothed_quat = current_quat.slerp(target_quat, 0.3)  # 30% interpolation per frame
+		var smoothed_basis = Basis(smoothed_quat)
+
+		# Set smoothed local rotation
+		equipped_weapon.transform.basis = smoothed_basis
 
 		# Set local position so grip aligns with hand bone origin
 		var grip_local_pos = equipped_weapon.main_grip.position
-		var grip_offset = weapon_local_basis * grip_local_pos
+		var grip_offset = smoothed_basis * grip_local_pos
 		equipped_weapon.transform.origin = -grip_offset
 
 func _process(_delta):
