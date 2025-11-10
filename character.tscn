@@ -51,11 +51,11 @@ head_bone_name = "characters3d.com___Head"
 head_offset = Vector3(0, 0.1, 0.15)
 
 [node name="TPSCamera" type="Camera3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 3)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.5, 5)
 fov = 75.0
 script = ExtResource("4")
-follow_distance = 3.0
-follow_height = 1.5
+follow_distance = 5.0
+follow_height = 2.5
 camera_smoothness = 10.0
 collision_margin = 0.2
 
