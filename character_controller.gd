@@ -1971,13 +1971,13 @@ func _update_weapon_ik_targets():
 		var aim_right = aim_direction.cross(up_ref).normalized()
 		var aim_down = aim_right.cross(aim_direction).normalized()
 
-		# Position elbow along the line from chest to hand with slight offset
-		# Position elbow halfway along the arm
-		var elbow_pos = anchor_transform.origin + chest_to_hand * 0.5
+		# Position elbow along the line from chest to hand
+		# Elbow should be closer to chest (35% to hand) so it's well behind the hand target
+		var elbow_pos = anchor_transform.origin + chest_to_hand * 0.35
 
 		# Gentle offset to the right and down for natural bend
-		elbow_pos += aim_right * 0.2   # Gentle outward offset
-		elbow_pos += aim_down * 0.1    # Gentle downward offset
+		elbow_pos += aim_right * 0.25   # Outward offset
+		elbow_pos += aim_down * 0.12    # Downward offset
 
 		right_elbow_target.global_position = elbow_pos
 
@@ -2000,12 +2000,13 @@ func _update_weapon_ik_targets():
 			var aim_right = aim_direction.cross(up_ref).normalized()
 			var aim_down = aim_right.cross(aim_direction).normalized()
 
-			# Position elbow along the line from chest to hand with slight offset
-			var elbow_pos = anchor_transform.origin + chest_to_hand * 0.5
+			# Position elbow along the line from chest to hand
+			# Elbow should be closer to chest (35% to hand) so it's well behind the hand target
+			var elbow_pos = anchor_transform.origin + chest_to_hand * 0.35
 
 			# Gentle offset to the left and down for natural bend
-			elbow_pos += aim_right * -0.2   # Gentle outward offset
-			elbow_pos += aim_down * 0.1     # Gentle downward offset
+			elbow_pos += aim_right * -0.25   # Outward offset
+			elbow_pos += aim_down * 0.12     # Downward offset
 
 			left_elbow_target.global_position = elbow_pos
 

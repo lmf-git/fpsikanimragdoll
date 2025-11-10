@@ -44,6 +44,12 @@ func _ready():
 		freeze = false
 		gravity_scale = 1.0
 
+	# Auto-configure fire mode based on weapon type
+	if weapon_type == WeaponType.RIFLE:
+		fire_mode = FireMode.FULL_AUTO  # Rifles are fully automatic
+	elif weapon_type == WeaponType.PISTOL:
+		fire_mode = FireMode.SEMI_AUTO  # Pistols are semi-automatic
+
 	# Ensure grip points are found (in case NodePath wasn't auto-resolved)
 	if not main_grip:
 		main_grip = get_node_or_null("MainGrip")
@@ -162,44 +168,9 @@ func equip(character: Node3D, hand_attachment: Node3D = null):
 	var attach_to = hand_attachment if hand_attachment else character
 	attach_to.add_child(self)
 
-	# Set local transform relative to hand
-	# If we have a main_grip, offset the weapon so grip aligns with hand bone origin
-	print("DEBUG: main_grip = ", main_grip)
-	if main_grip:
-		print("DEBUG: main_grip exists, position = ", main_grip.position)
-		# Get grip offset in local space
-		var grip_local_pos = main_grip.position
-
-		# Apply rotation offset - no rotation needed, weapon already points correctly
-		var rotation_offset = Basis()
-		# Pistol orientation is correct by default
-		transform.basis = rotation_offset
-
-		# Position weapon so grip point is at hand origin (0,0,0 in hand local space)
-		# This means weapon position = -grip_offset rotated by weapon basis
-		var grip_offset_rotated = transform.basis * grip_local_pos
-		transform.origin = -grip_offset_rotated
-
-		# Add weapon-specific positioning offset for better feel
-		# After -90° pitch rotation, weapon points forward along Z-
-		# In weapon's local space: X+ = right, X- = left, Z+ = forward (toward barrel), Z- = backward
-		var weapon_offset = Vector3.ZERO
-		if weapon_type == WeaponType.PISTOL:
-			# Move pistol forward and to the left in local space
-			weapon_offset = Vector3(-0.03, 0.0, 0.08)  # 3cm left, 8cm forward
-		elif weapon_type == WeaponType.RIFLE:
-			# Rifles need more forward offset
-			weapon_offset = Vector3(-0.02, 0.0, 0.12)  # 2cm left, 12cm forward
-
-		# Apply offset in local space
-		transform.origin += weapon_offset
-
-		print("Weapon ", weapon_name, " equipped with grip offset: ", transform.origin, " (type offset applied)")
-	else:
-		# No grip point - just place at hand origin with rotation offset
-		transform.origin = Vector3(-0.03, 0.0, 0.08)  # Default pistol offset (forward and left)
-		transform.basis = Basis().rotated(Vector3.RIGHT, deg_to_rad(-90))
-		print("Weapon ", weapon_name, " equipped at hand origin (no grip point)")
+	# Reset local transform - weapon positioning is handled by _update_weapon_to_hand() in character controller
+	# which uses IK hand bone position and camera aim direction
+	transform = Transform3D.IDENTITY
 
 	print("Weapon ", weapon_name, " equipped successfully, parented to: ", attach_to.name)
 	return true
