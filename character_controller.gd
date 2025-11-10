@@ -1528,13 +1528,13 @@ func _trigger_muzzle_flash():
 	if equipped_weapon.muzzle_point:
 		muzzle_position = equipped_weapon.muzzle_point.global_position
 
-	# 1. CREATE BRIGHT MUZZLE FLASH
+	# 1. CREATE BRIGHT MUZZLE FLASH (small and subtle)
 	var flash = OmniLight3D.new()
 	get_tree().root.add_child(flash)
 	flash.global_position = muzzle_position
 	flash.light_color = Color(1.0, 0.9, 0.6)
-	flash.light_energy = 50.0  # Very bright
-	flash.omni_range = 5.0
+	flash.light_energy = 30.0  # Bright but not overwhelming
+	flash.omni_range = 2.5  # Smaller range for realistic muzzle flash
 	flash.shadow_enabled = false
 
 	# Quick flash using tween
@@ -1570,8 +1570,8 @@ func _trigger_muzzle_flash():
 	smoke_material.gravity = Vector3(0, 0.15, 0)  # Slight upward drift
 	smoke_material.damping_min = 1.5
 	smoke_material.damping_max = 2.0
-	smoke_material.scale_min = 0.03  # Much smaller particles
-	smoke_material.scale_max = 0.06
+	smoke_material.scale_min = 0.02  # Tiny circular smoke puffs
+	smoke_material.scale_max = 0.04
 	smoke_material.scale_curve = _create_muzzle_smoke_scale_curve()
 	smoke_material.color = Color(0.3, 0.3, 0.35, 0.6)  # Gray-blue gunpowder smoke
 	smoke_material.color_ramp = _create_muzzle_smoke_fade_gradient()
@@ -1615,10 +1615,13 @@ func _create_impact_smoke_fade_gradient() -> Gradient:
 	gradient.set_color(1, Color(0.4, 0.4, 0.4, 0.0))  # Fade to transparent
 	return gradient
 
-func _create_smoke_mesh() -> QuadMesh:
-	"""Create simple quad mesh for smoke particles"""
-	var mesh = QuadMesh.new()
-	mesh.size = Vector2(0.3, 0.3)
+func _create_smoke_mesh() -> SphereMesh:
+	"""Create circular mesh for smoke particles"""
+	var mesh = SphereMesh.new()
+	mesh.radius = 0.1  # Smaller radius for subtle smoke
+	mesh.height = 0.2  # Make it spherical
+	mesh.radial_segments = 8  # Low poly for performance
+	mesh.rings = 4
 
 	# Create material for smoke particles
 	var material = StandardMaterial3D.new()
