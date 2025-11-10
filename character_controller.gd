@@ -117,6 +117,9 @@ const MUZZLE_FLASH_DURATION: float = 0.05  # 50ms flash
 # Gunshot audio
 var gunshot_audio: AudioStreamPlayer3D = null
 
+# Shooting state
+var is_trigger_held: bool = false  # Track if left mouse button is held
+
 # Crosshair UI
 var crosshair_ui: Control = null
 var crosshair_dot: ColorRect = null
@@ -772,9 +775,15 @@ func _input(event):
 
 	# Left click for shooting
 	if event is InputEventMouseButton:
-		if event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
-			if equipped_weapon:
-				_shoot_weapon()
+		if event.button_index == MOUSE_BUTTON_LEFT:
+			if event.pressed:
+				# Trigger pressed - start shooting
+				is_trigger_held = true
+				if equipped_weapon:
+					_shoot_weapon()
+			else:
+				# Trigger released - stop shooting
+				is_trigger_held = false
 
 	# Right click for weapon aim
 	if event is InputEventMouseButton:
@@ -2165,3 +2174,10 @@ func _process(_delta):
 	# This prevents gun from rotating opposite to arm movement
 	if equipped_weapon:
 		_update_weapon_to_hand()
+
+	# STEP 4: Handle automatic fire
+	# If trigger is held and weapon is full auto, shoot continuously
+	if is_trigger_held and equipped_weapon:
+		if equipped_weapon.fire_mode == Weapon.FireMode.FULL_AUTO:
+			if equipped_weapon.can_shoot:
+				_shoot_weapon()

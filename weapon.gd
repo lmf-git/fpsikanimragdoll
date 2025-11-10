@@ -4,10 +4,14 @@ class_name Weapon
 # Weapon types
 enum WeaponType { PISTOL, RIFLE }
 
+# Fire modes
+enum FireMode { SEMI_AUTO, FULL_AUTO }
+
 # Weapon properties
 @export var weapon_type: WeaponType = WeaponType.PISTOL
 @export var weapon_name: String = "Weapon"
 @export var is_two_handed: bool = false
+@export var fire_mode: FireMode = FireMode.SEMI_AUTO
 
 # Grip points for IK
 @export var main_grip: Node3D  # Primary grip (right hand for pistol, dominant hand for rifle)
