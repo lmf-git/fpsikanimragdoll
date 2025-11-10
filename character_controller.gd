@@ -1990,8 +1990,14 @@ func _update_weapon_ik_targets():
 
 		right_elbow_target.global_position = elbow_pos
 
-		# Position wrist between elbow and hand (closer to hand)
+		# Position wrist between elbow and hand with rotation offset for grip
+		# Base position: between elbow and hand
 		var wrist_pos = right_elbow_target.global_position.lerp(right_hand_target.global_position, 0.7)
+
+		# Offset wrist slightly to the RIGHT to rotate forearm for gun grip
+		# This makes the palm face left (toward gun handle) instead of facing body
+		wrist_pos += aim_right * 0.08  # Offset to the right to rotate hand
+
 		right_wrist_target.global_position = wrist_pos
 
 	# LEFT ARM: Position elbow and wrist targets to follow hand target
@@ -2019,8 +2025,13 @@ func _update_weapon_ik_targets():
 
 			left_elbow_target.global_position = elbow_pos
 
-			# Position wrist between elbow and hand
+			# Position wrist between elbow and hand with rotation offset for grip
 			var wrist_pos = left_elbow_target.global_position.lerp(left_hand_target.global_position, 0.7)
+
+			# Offset wrist slightly to the LEFT to rotate forearm for gun grip
+			# This makes the palm face right (toward gun handle) instead of facing body
+			wrist_pos += aim_right * -0.08  # Offset to the left (negative right) to rotate hand
+
 			left_wrist_target.global_position = wrist_pos
 		else:
 			# Pistol hip fire: left arm stays at rest position
@@ -2053,38 +2064,32 @@ func _update_weapon_to_hand():
 	if not active_camera:
 		return
 
-	# STEP 1: Orient weapon to match CAMERA AIM DIRECTION, not hand rotation
-	# This prevents the weapon from rotating opposite to arm movement
+	# STEP 1: Orient weapon to point where camera is aiming
+	# Use camera forward direction, not hand rotation
 	if equipped_weapon.main_grip:
-		# Calculate where weapon should be placed so grip aligns with hand
-		var grip_local_pos = equipped_weapon.main_grip.position
-
-		# Use camera's aim direction for weapon orientation
-		# This keeps the weapon pointing where you're looking
+		# Get camera aim direction
 		var camera_forward = -active_camera.global_transform.basis.z
 		var camera_right = active_camera.global_transform.basis.x
 		var camera_up = active_camera.global_transform.basis.y
 
-		# Build weapon basis from camera orientation
-		# Apply -90 degree pitch to point weapon forward
-		var rotation_offset = Basis()
-		rotation_offset = rotation_offset.rotated(Vector3.RIGHT, deg_to_rad(-90))  # Pitch weapon forward
-
-		# Construct weapon basis from camera (ensures weapon follows aim)
-		var weapon_basis = Basis(camera_right, camera_up, camera_forward) * rotation_offset
+		# Make weapon point forward along camera aim
+		# Weapon's local -Z axis should point along camera forward
+		# Build basis: right=camera_right, up=camera_up, forward=camera_forward
+		var weapon_basis = Basis(camera_right, camera_up, camera_forward)
 		equipped_weapon.global_transform.basis = weapon_basis
 
-		# Position weapon so grip point is at hand bone origin
+		# Position weapon so grip aligns with hand bone
+		var grip_local_pos = equipped_weapon.main_grip.position
 		var grip_world_offset = equipped_weapon.global_transform.basis * grip_local_pos
 		equipped_weapon.global_position = right_hand_transform.origin - grip_world_offset
 
-		print("DEBUG: Set weapon position to: ", equipped_weapon.global_position)
+		print("DEBUG: Weapon at hand, pointing camera direction: ", equipped_weapon.global_position)
 	else:
-		# Fallback: if no grip point, point weapon at camera aim direction
+		# Fallback: point weapon forward from hand position
 		var camera_forward = -active_camera.global_transform.basis.z
 		equipped_weapon.global_position = right_hand_transform.origin
 		equipped_weapon.look_at(right_hand_transform.origin + camera_forward * 10.0, Vector3.UP)
-		print("DEBUG: No main_grip, oriented weapon to camera aim")
+		print("DEBUG: No grip, weapon pointing camera aim")
 
 func _process(_delta):
 	# WEAPON UPDATE ORDER - CRITICAL for proper IK-based positioning:
