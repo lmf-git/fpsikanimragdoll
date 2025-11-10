@@ -84,6 +84,7 @@ var last_nearby_weapon: Weapon = null  # Track changes for debug logging
 enum WeaponState { SHEATHED, READY, AIMING }
 var weapon_state: WeaponState = WeaponState.READY
 var is_weapon_sheathed: bool = false  # Toggle for sheathed state
+var is_aim_toggled: bool = false  # Toggle for aiming (Ctrl+RightClick)
 
 # Weapon positioning - skeleton-relative offsets
 @export var aim_weapon_offset: Vector3 = Vector3(0.15, 0.4, -1.7)  # Offset when aiming down sights (higher and further forward)
@@ -785,19 +786,27 @@ func _input(event):
 				# Trigger released - stop shooting
 				is_trigger_held = false
 
-	# Right click for weapon aim
+	# Right click for weapon aim (with Ctrl for toggle)
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_RIGHT:
 			if event.pressed and equipped_weapon and not is_weapon_sheathed:
-				weapon_state = WeaponState.AIMING
+				# Ctrl + Right click = toggle aim on/off
+				if Input.is_key_pressed(KEY_CTRL):
+					is_aim_toggled = !is_aim_toggled
+					weapon_state = WeaponState.AIMING if is_aim_toggled else WeaponState.READY
+				else:
+					# Just right click = hold to aim
+					weapon_state = WeaponState.AIMING
 			else:
-				# Return to ready or sheathed based on sheathed flag
-				weapon_state = WeaponState.SHEATHED if is_weapon_sheathed else WeaponState.READY
+				# Right click released - return to ready only if not toggled
+				if not is_aim_toggled:
+					weapon_state = WeaponState.SHEATHED if is_weapon_sheathed else WeaponState.READY
 
 	# H key to toggle weapon sheathed/ready
 	if event is InputEventKey and event.pressed and event.keycode == KEY_H:
 		if equipped_weapon:
 			is_weapon_sheathed = !is_weapon_sheathed
+			is_aim_toggled = false  # Reset aim toggle when sheathing
 			weapon_state = WeaponState.SHEATHED if is_weapon_sheathed else WeaponState.READY
 			print("Weapon ", "sheathed" if is_weapon_sheathed else "ready")
 
