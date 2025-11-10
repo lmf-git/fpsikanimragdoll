@@ -1445,12 +1445,10 @@ func _trigger_muzzle_flash():
 	if not equipped_weapon:
 		return
 
-	# Get flash position and direction - use muzzle_point if available
+	# Get flash position - use muzzle_point if available
 	var flash_position = equipped_weapon.global_position
-	var muzzle_forward = Vector3.FORWARD
 	if equipped_weapon.muzzle_point:
 		flash_position = equipped_weapon.muzzle_point.global_position
-		muzzle_forward = -equipped_weapon.muzzle_point.global_transform.basis.z
 
 	# Create bright muzzle flash light
 	var flash = OmniLight3D.new()
@@ -1466,59 +1464,21 @@ func _trigger_muzzle_flash():
 	flash_tween.tween_property(flash, "light_energy", 0.0, 0.05)
 	flash_tween.tween_callback(flash.queue_free)
 
-	# Create muzzle smoke particles
-	var smoke = GPUParticles3D.new()
-	get_tree().root.add_child(smoke)
-	smoke.global_position = flash_position
+	print("Muzzle flash at ", flash_position)
 
-	# Align smoke to shoot forward from barrel
-	smoke.global_rotation = equipped_weapon.muzzle_point.global_rotation if equipped_weapon.muzzle_point else equipped_weapon.global_rotation
-
-	# Particle settings
-	smoke.emitting = true
-	smoke.one_shot = true
-	smoke.explosiveness = 0.8  # Quick burst
-	smoke.amount = 20
-	smoke.lifetime = 1.5
-	smoke.speed_scale = 1.0
-
-	# Create particle process material
-	var smoke_material = ParticleProcessMaterial.new()
-	smoke_material.direction = Vector3(0, 0, -1)  # Forward in local space
-	smoke_material.spread = 15.0  # Slight cone spread
-	smoke_material.initial_velocity_min = 3.0
-	smoke_material.initial_velocity_max = 5.0
-	smoke_material.gravity = Vector3(0, 0.5, 0)  # Smoke rises slowly
-	smoke_material.damping_min = 1.0
-	smoke_material.damping_max = 2.0
-	smoke_material.scale_min = 0.1
-	smoke_material.scale_max = 0.15
-	smoke_material.scale_curve = _create_smoke_scale_curve()
-	smoke_material.color = Color(0.3, 0.3, 0.3, 0.6)  # Gray smoke
-	smoke_material.color_ramp = _create_smoke_fade_gradient()
-
-	smoke.process_material = smoke_material
-	smoke.draw_pass_1 = _create_smoke_mesh()
-
-	# Auto-cleanup after particles finish
-	var cleanup_timer = get_tree().create_timer(2.0)
-	cleanup_timer.timeout.connect(func(): smoke.queue_free())
-
-	print("Muzzle flash and smoke at ", flash_position)
-
-func _create_smoke_scale_curve() -> Curve:
-	"""Create curve for smoke particles to grow over time"""
+func _create_impact_smoke_scale_curve() -> Curve:
+	"""Create curve for impact smoke/dust particles to grow over time"""
 	var curve = Curve.new()
-	curve.add_point(Vector2(0.0, 0.2))  # Start small
+	curve.add_point(Vector2(0.0, 0.3))  # Start small
 	curve.add_point(Vector2(0.5, 1.0))  # Grow to full size
-	curve.add_point(Vector2(1.0, 1.5))  # Continue expanding
+	curve.add_point(Vector2(1.0, 1.2))  # Slight expansion
 	return curve
 
-func _create_smoke_fade_gradient() -> Gradient:
-	"""Create gradient for smoke to fade out over time"""
+func _create_impact_smoke_fade_gradient() -> Gradient:
+	"""Create gradient for impact smoke to fade out over time"""
 	var gradient = Gradient.new()
-	gradient.set_color(0, Color(0.4, 0.4, 0.4, 0.8))  # Start visible
-	gradient.set_color(1, Color(0.3, 0.3, 0.3, 0.0))  # Fade to transparent
+	gradient.set_color(0, Color(0.5, 0.45, 0.4, 0.8))  # Start visible dusty color
+	gradient.set_color(1, Color(0.4, 0.4, 0.4, 0.0))  # Fade to transparent
 	return gradient
 
 func _create_smoke_mesh() -> QuadMesh:
@@ -1644,18 +1604,46 @@ func _create_impact_effect(impact_pos: Vector3, normal: Vector3):
 	var decal_timer = get_tree().create_timer(30.0)  # Stay for 30 seconds
 	decal_timer.timeout.connect(func(): decal.queue_free())
 
-	# 2. CREATE SIMPLE VISIBLE SMOKE PUFF
-	var smoke = OmniLight3D.new()
+	# 2. CREATE IMPACT DUST/SMOKE PARTICLES
+	var smoke = GPUParticles3D.new()
 	get_tree().root.add_child(smoke)
-	smoke.global_position = impact_pos + normal * 0.1
-	smoke.light_color = Color(0.6, 0.6, 0.6)  # Gray light
-	smoke.light_energy = 2.0
-	smoke.omni_range = 1.0
+	smoke.global_position = impact_pos + normal * 0.05
 
-	# Fade out smoke light over time
-	var smoke_tween = create_tween()
-	smoke_tween.tween_property(smoke, "light_energy", 0.0, 0.5)
-	smoke_tween.tween_callback(smoke.queue_free)
+	# Orient smoke to emit along surface normal
+	var up_dir = Vector3.UP
+	if abs(normal.dot(Vector3.UP)) > 0.99:
+		up_dir = Vector3.RIGHT
+	smoke.look_at(impact_pos + normal * 2.0, up_dir)
+
+	# Particle settings - small dust puff
+	smoke.emitting = true
+	smoke.one_shot = true
+	smoke.explosiveness = 0.9  # Very quick burst
+	smoke.amount = 8  # Fewer particles for smaller effect
+	smoke.lifetime = 0.8  # Shorter lifetime
+	smoke.speed_scale = 1.0
+
+	# Create particle material
+	var smoke_material = ParticleProcessMaterial.new()
+	smoke_material.direction = Vector3(0, 0, -1)  # Forward along normal in local space
+	smoke_material.spread = 25.0  # Wide spread for dust puff
+	smoke_material.initial_velocity_min = 1.0  # Slower particles
+	smoke_material.initial_velocity_max = 2.5
+	smoke_material.gravity = Vector3(0, 0.3, 0)  # Light upward drift
+	smoke_material.damping_min = 2.0  # Quick slowdown
+	smoke_material.damping_max = 3.0
+	smoke_material.scale_min = 0.05  # Smaller particles
+	smoke_material.scale_max = 0.08
+	smoke_material.scale_curve = _create_impact_smoke_scale_curve()
+	smoke_material.color = Color(0.5, 0.45, 0.4, 0.7)  # Dusty brown-gray
+	smoke_material.color_ramp = _create_impact_smoke_fade_gradient()
+
+	smoke.process_material = smoke_material
+	smoke.draw_pass_1 = _create_smoke_mesh()
+
+	# Auto-cleanup
+	var cleanup_timer = get_tree().create_timer(1.5)
+	cleanup_timer.timeout.connect(func(): smoke.queue_free())
 
 	# 3. CREATE BRIGHT IMPACT FLASH
 	var flash = OmniLight3D.new()
@@ -1927,21 +1915,26 @@ func _update_weapon_ik_targets():
 	# RIGHT ARM: Position elbow and wrist targets to follow hand target
 	# This makes the entire arm follow the aim direction
 	if right_hand_target and right_elbow_target and right_wrist_target:
-		# Calculate direction from chest to hand target
+		# Calculate direction from chest to hand target (aim direction)
 		var chest_to_hand = right_hand_target.global_position - anchor_transform.origin
+		var aim_direction = chest_to_hand.normalized()
 		var hand_distance = chest_to_hand.length()
 
-		# Position elbow to create natural arm bend
-		# Elbow should be:
-		# - Partway between chest and hand (about 50% of distance)
-		# - Down from the line between chest and hand
-		# - To the right (outward from body)
-		var elbow_pos = anchor_transform.origin + chest_to_hand * 0.5  # Halfway to hand
+		# Position elbow along aim line but offset to the side
+		# Start halfway along the aim direction
+		var elbow_pos = anchor_transform.origin + chest_to_hand * 0.45  # 45% to hand
 
-		# Add offset to create elbow bend (down and right)
-		var body_basis = Basis(Vector3.UP, body_rotation_y)
-		var elbow_bend_offset = Vector3(0.15, -0.2, 0.05)  # Right, down, slightly back
-		elbow_pos += body_basis * elbow_bend_offset
+		# Create perpendicular offset (right and down) relative to aim direction
+		# Get the right vector perpendicular to aim direction
+		var up_ref = Vector3.UP
+		if abs(aim_direction.dot(Vector3.UP)) > 0.9:
+			up_ref = Vector3.RIGHT
+		var aim_right = aim_direction.cross(up_ref).normalized()
+		var aim_down = aim_right.cross(aim_direction).normalized()
+
+		# Offset elbow to the right and down from aim line
+		elbow_pos += aim_right * 0.25  # More to the right for better bend
+		elbow_pos += aim_down * 0.15  # Down for natural drop
 
 		right_elbow_target.global_position = elbow_pos
 
@@ -1955,15 +1948,22 @@ func _update_weapon_ik_targets():
 			# Two-handed weapon or aiming with pistol: left hand supports weapon
 			# Position elbow and wrist to follow the left hand target (same as right arm logic)
 			var chest_to_hand = left_hand_target.global_position - anchor_transform.origin
+			var aim_direction = chest_to_hand.normalized()
 			var hand_distance = chest_to_hand.length()
 
-			# Position elbow halfway to hand with bend offset
-			var elbow_pos = anchor_transform.origin + chest_to_hand * 0.5
+			# Position elbow along aim line but offset to the side
+			var elbow_pos = anchor_transform.origin + chest_to_hand * 0.45  # 45% to hand
 
-			# Add offset to create elbow bend (down and left)
-			var body_basis = Basis(Vector3.UP, body_rotation_y)
-			var elbow_bend_offset = Vector3(-0.15, -0.2, 0.05)  # Left, down, slightly back
-			elbow_pos += body_basis * elbow_bend_offset
+			# Create perpendicular offset (left and down) relative to aim direction
+			var up_ref = Vector3.UP
+			if abs(aim_direction.dot(Vector3.UP)) > 0.9:
+				up_ref = Vector3.RIGHT
+			var aim_right = aim_direction.cross(up_ref).normalized()
+			var aim_down = aim_right.cross(aim_direction).normalized()
+
+			# Offset elbow to the left and down from aim line
+			elbow_pos += aim_right * -0.25  # To the left (negative right)
+			elbow_pos += aim_down * 0.15  # Down for natural drop
 
 			left_elbow_target.global_position = elbow_pos
 
