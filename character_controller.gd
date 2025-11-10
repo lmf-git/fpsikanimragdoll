@@ -1969,13 +1969,13 @@ func _update_weapon_ik_targets():
 		var aim_right = aim_direction.cross(up_ref).normalized()
 		var aim_down = aim_right.cross(aim_direction).normalized()
 
-		# Position elbow FAR OUT TO THE SIDE and DOWN to prevent inward hand rotation
-		# Keep elbow closer to shoulder (30% to hand)
-		var elbow_pos = anchor_transform.origin + chest_to_hand * 0.3
+		# Position elbow out to the side and down to create natural arm bend
+		# Position elbow partway along the line from chest to hand
+		var elbow_pos = anchor_transform.origin + chest_to_hand * 0.4
 
-		# VERY LARGE offset to the right to force elbow outward
-		elbow_pos += aim_right * 0.5   # Much further right (was 0.35)
-		elbow_pos += aim_down * 0.25   # Further down (was 0.2)
+		# Moderate offset to the right and down for natural bend
+		elbow_pos += aim_right * 0.3   # To the right (reduced from 0.5)
+		elbow_pos += aim_down * 0.15   # Down for natural drop (reduced from 0.25)
 
 		right_elbow_target.global_position = elbow_pos
 
@@ -1998,12 +1998,12 @@ func _update_weapon_ik_targets():
 			var aim_right = aim_direction.cross(up_ref).normalized()
 			var aim_down = aim_right.cross(aim_direction).normalized()
 
-			# Position elbow FAR OUT TO THE LEFT SIDE and DOWN to prevent inward hand rotation
-			var elbow_pos = anchor_transform.origin + chest_to_hand * 0.3
+			# Position elbow out to the left side and down to create natural arm bend
+			var elbow_pos = anchor_transform.origin + chest_to_hand * 0.4
 
-			# VERY LARGE offset to the left to force elbow outward
-			elbow_pos += aim_right * -0.5   # Much further left (was -0.35)
-			elbow_pos += aim_down * 0.25    # Further down (was 0.2)
+			# Moderate offset to the left and down for natural bend
+			elbow_pos += aim_right * -0.3   # To the left (reduced from -0.5)
+			elbow_pos += aim_down * 0.15    # Down for natural drop (reduced from 0.25)
 
 			left_elbow_target.global_position = elbow_pos
 
@@ -2089,18 +2089,20 @@ func _process(_delta):
 		# Arm IK depends on weapon equipped state
 		if equipped_weapon:
 			# Weapon equipped - always use right arm IK to hold weapon
-			if right_elbow_ik:
-				right_elbow_ik.start()
+			# Apply wrist IK BEFORE elbow IK for better hand positioning
 			if right_wrist_ik:
 				right_wrist_ik.start()
+			if right_elbow_ik:
+				right_elbow_ik.start()
 
 			# Left arm IK control based on weapon state
 			if weapon_state == WeaponState.AIMING:
 				# When aiming, activate left arm IK for two-handed grip or support
-				if left_elbow_ik:
-					left_elbow_ik.start()
+				# Apply wrist IK BEFORE elbow IK
 				if left_wrist_ik:
 					left_wrist_ik.start()
+				if left_elbow_ik:
+					left_elbow_ik.start()
 			else:
 				# Not aiming - disable left arm IK for relaxed pose (one-handed grip)
 				if left_elbow_ik:
@@ -2121,17 +2123,18 @@ func _process(_delta):
 		# IK disabled - but keep arm IK active if weapon equipped
 		if equipped_weapon:
 			# Keep right arm IK active to hold weapon
-			if right_elbow_ik:
-				right_elbow_ik.start()
+			# Apply wrist IK BEFORE elbow IK
 			if right_wrist_ik:
 				right_wrist_ik.start()
+			if right_elbow_ik:
+				right_elbow_ik.start()
 
 			# Left arm IK only when aiming
 			if weapon_state == WeaponState.AIMING:
-				if left_elbow_ik:
-					left_elbow_ik.start()
 				if left_wrist_ik:
 					left_wrist_ik.start()
+				if left_elbow_ik:
+					left_elbow_ik.start()
 			else:
 				if left_elbow_ik:
 					left_elbow_ik.stop()
