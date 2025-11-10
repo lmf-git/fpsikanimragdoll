@@ -1862,6 +1862,13 @@ func _update_weapon_ik_targets():
 	if not active_camera:
 		return
 
+	# Get anchor point (chest bone or character center) - used throughout function
+	var anchor_transform: Transform3D
+	if chest_bone_id >= 0:
+		anchor_transform = skeleton.global_transform * skeleton.get_bone_global_pose(chest_bone_id)
+	else:
+		anchor_transform = global_transform
+
 	# Check if character is moving for sway calculation
 	var character_moving = velocity.length() > 0.1
 	current_sway = _calculate_weapon_sway(get_process_delta_time(), character_moving)
@@ -1881,14 +1888,6 @@ func _update_weapon_ik_targets():
 	var right_hand_target = ik_targets_node.get_node_or_null("RightHandTarget")
 	if right_hand_target:
 		var base_offset = target_offset + current_sway
-
-		# Use chest bone as anchor point
-		var anchor_transform: Transform3D
-		if chest_bone_id >= 0:
-			anchor_transform = skeleton.global_transform * skeleton.get_bone_global_pose(chest_bone_id)
-		else:
-			# Fallback to character position if no chest bone
-			anchor_transform = global_transform
 
 		# Position hand relative to CAMERA AIM DIRECTION, not body direction
 		# This makes hands follow where you're looking
@@ -1956,13 +1955,6 @@ func _update_weapon_ik_targets():
 	var left_wrist_target = ik_targets_node.get_node_or_null("LeftWristTarget")
 	var right_wrist_target = ik_targets_node.get_node_or_null("RightWristTarget")
 
-	# Get anchor point (chest or character center)
-	var anchor_transform: Transform3D
-	if chest_bone_id >= 0:
-		anchor_transform = skeleton.global_transform * skeleton.get_bone_global_pose(chest_bone_id)
-	else:
-		anchor_transform = global_transform
-
 	# RIGHT ARM: Position elbow target to create proper arm bend
 	# The wrist IK now uses hand_target, so we only need to position elbow correctly
 	if right_hand_target and right_elbow_target and right_wrist_target:
@@ -1986,12 +1978,6 @@ func _update_weapon_ik_targets():
 		elbow_pos += aim_down * 0.25   # Further down (was 0.2)
 
 		right_elbow_target.global_position = elbow_pos
-
-		# Set magnet position for wrist IK to pull hand outward (prevents inward rotation)
-		if right_wrist_ik:
-			# Magnet pulls the wrist bend to the right
-			var magnet_pos = right_hand_target.global_position + aim_right * 0.3
-			right_wrist_ik.magnet_position = magnet_pos
 
 		# Wrist target is just for visualization now (wrist IK uses hand_target)
 		# Position it between elbow and hand for visual reference
@@ -2020,12 +2006,6 @@ func _update_weapon_ik_targets():
 			elbow_pos += aim_down * 0.25    # Further down (was 0.2)
 
 			left_elbow_target.global_position = elbow_pos
-
-			# Set magnet position for wrist IK to pull hand outward (prevents inward rotation)
-			if left_wrist_ik:
-				# Magnet pulls the wrist bend to the left
-				var magnet_pos = left_hand_target.global_position + aim_right * -0.3
-				left_wrist_ik.magnet_position = magnet_pos
 
 			# Wrist target is just for visualization now (wrist IK uses hand_target)
 			var wrist_pos = left_elbow_target.global_position.lerp(left_hand_target.global_position, 0.6)
