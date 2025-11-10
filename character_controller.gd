@@ -1639,18 +1639,18 @@ func _play_gunshot_sound():
 	# Initialize audio pool if empty
 	if gunshot_audio_pool.is_empty():
 		for i in range(AUDIO_POOL_SIZE):
-			var audio_player = AudioStreamPlayer3D.new()
-			audio_player.max_distance = 50.0
-			audio_player.unit_size = 10.0  # Very loud
+			var player = AudioStreamPlayer3D.new()
+			player.max_distance = 50.0
+			player.unit_size = 10.0  # Very loud
 
 			# Create gunshot generator stream (reusable)
 			var generator = AudioStreamGenerator.new()
 			generator.mix_rate = 44100.0  # Standard CD quality
 			generator.buffer_length = 0.15
-			audio_player.stream = generator
+			player.stream = generator
 
-			add_child(audio_player)
-			gunshot_audio_pool.append(audio_player)
+			add_child(player)
+			gunshot_audio_pool.append(player)
 
 	# Get next available audio player from pool (round-robin)
 	var audio_player = gunshot_audio_pool[current_audio_index]
@@ -2080,39 +2080,35 @@ func _update_weapon_ik_targets():
 		var wrist_pos = right_elbow_target.global_position.lerp(right_hand_target.global_position, 0.6)
 		right_wrist_target.global_position = wrist_pos
 
-	# FINGER POSITIONING: Position finger targets around a fixed grip position
-	# Define grip position based on hand target and camera aim (independent of weapon)
-	if equipped_weapon and right_hand_target and active_camera:
+	# FINGER POSITIONING: Position finger targets to grip weapon handle
+	# Fingers curl around the weapon grip to create realistic hand pose
+	if equipped_weapon and equipped_weapon.main_grip:
 		var right_thumb_target = ik_targets_node.get_node_or_null("RightThumbTarget")
 		var right_index_target = ik_targets_node.get_node_or_null("RightIndexTarget")
 		var right_middle_target = ik_targets_node.get_node_or_null("RightMiddleTarget")
 
-		# Calculate grip position from camera aim direction
-		var camera_forward = -active_camera.global_transform.basis.z
-		var camera_right = active_camera.global_transform.basis.x
-		var camera_up = active_camera.global_transform.basis.y
+		# Get weapon grip transform for positioning fingers
+		var grip_pos = equipped_weapon.main_grip.global_position
+		var grip_basis = equipped_weapon.main_grip.global_transform.basis
 
-		# Create grip basis aligned with camera aim
-		var grip_basis = Basis(camera_right, camera_up, -camera_forward)
-
-		# Grip position is at hand target
-		var grip_center = right_hand_target.global_position
-
-		# Position fingers around grip center with fixed offsets
-		# Thumb wraps around left side of grip
+		# Position fingers to curl around grip with proper spacing
+		# Thumb opposes other fingers on opposite side of grip
 		if right_thumb_target:
-			var thumb_offset = grip_basis * Vector3(-0.04, -0.02, 0.0)  # Left and down
-			right_thumb_target.global_position = grip_center + thumb_offset
+			# Thumb wraps around left side, slightly back and down
+			var thumb_offset = grip_basis * Vector3(-0.035, -0.015, 0.025)
+			right_thumb_target.global_position = grip_pos + thumb_offset
 
-		# Index finger wraps around front/right of grip (trigger finger)
+		# Index finger extends forward for trigger
 		if right_index_target:
-			var index_offset = grip_basis * Vector3(0.03, -0.03, -0.02)  # Right, down, back (trigger)
-			right_index_target.global_position = grip_center + index_offset
+			# Index goes forward toward trigger, slightly right
+			var index_offset = grip_basis * Vector3(0.02, -0.02, -0.04)
+			right_index_target.global_position = grip_pos + index_offset
 
-		# Middle finger wraps around right side of grip
+		# Middle finger wraps around grip front-right
 		if right_middle_target:
-			var middle_offset = grip_basis * Vector3(0.04, -0.04, 0.0)  # Right and down
-			right_middle_target.global_position = grip_center + middle_offset
+			# Middle finger curves around right side of grip
+			var middle_offset = grip_basis * Vector3(0.03, -0.025, -0.015)
+			right_middle_target.global_position = grip_pos + middle_offset
 
 	# LEFT ARM: Position elbow and wrist targets to follow hand target
 	if left_hand_target and left_elbow_target and left_wrist_target:
@@ -2195,14 +2191,13 @@ func _process(_delta):
 			if right_elbow_ik:
 				right_elbow_ik.start()
 
-			# Finger IK disabled - causes hand spinning
-			# TODO: Fix finger IK conflicts before re-enabling
-			#if right_thumb_ik:
-			#	right_thumb_ik.start()
-			#if right_index_ik:
-			#	right_index_ik.start()
-			#if right_middle_ik:
-			#	right_middle_ik.start()
+			# Finger IK - now uses fixed positions based on hand target, avoiding circular dependency
+			if right_thumb_ik:
+				right_thumb_ik.start()
+			if right_index_ik:
+				right_index_ik.start()
+			if right_middle_ik:
+				right_middle_ik.start()
 
 			# Left arm IK control based on weapon state
 			if weapon_state == WeaponState.AIMING:
@@ -2245,14 +2240,13 @@ func _process(_delta):
 			if right_elbow_ik:
 				right_elbow_ik.start()
 
-			# Finger IK disabled - causes hand spinning
-			# TODO: Fix finger IK conflicts before re-enabling
-			#if right_thumb_ik:
-			#	right_thumb_ik.start()
-			#if right_index_ik:
-			#	right_index_ik.start()
-			#if right_middle_ik:
-			#	right_middle_ik.start()
+			# Finger IK - grips weapon handle
+			if right_thumb_ik:
+				right_thumb_ik.start()
+			if right_index_ik:
+				right_index_ik.start()
+			if right_middle_ik:
+				right_middle_ik.start()
 
 			# Left arm IK only when aiming
 			if weapon_state == WeaponState.AIMING:
