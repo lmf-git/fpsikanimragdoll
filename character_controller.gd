@@ -1995,6 +1995,17 @@ func _update_weapon_ik_targets():
 
 		right_hand_target.global_position = target_pos
 
+		# Set hand rotation to grip weapon properly
+		# Hand should be oriented so palm faces toward grip (away from camera)
+		var camera_forward = -active_camera.global_transform.basis.z
+		var camera_right = active_camera.global_transform.basis.x
+		var camera_up = active_camera.global_transform.basis.y
+
+		# Create grip-oriented basis: palm faces down/forward, fingers point forward
+		# X axis = right (thumb direction), Y axis = up (back of hand), Z axis = forward (palm faces back)
+		var grip_basis = Basis(camera_right, camera_up, -camera_forward)
+		right_hand_target.global_transform.basis = grip_basis
+
 	# Update left hand IK target ONLY for two-handed weapons (rifles)
 	var left_hand_target = ik_targets_node.get_node_or_null("LeftHandTarget")
 	if left_hand_target:
@@ -2080,35 +2091,14 @@ func _update_weapon_ik_targets():
 		var wrist_pos = right_elbow_target.global_position.lerp(right_hand_target.global_position, 0.6)
 		right_wrist_target.global_position = wrist_pos
 
-	# FINGER POSITIONING: Position finger targets to grip weapon handle
-	# Fingers curl around the weapon grip to create realistic hand pose
-	if equipped_weapon and equipped_weapon.main_grip:
-		var right_thumb_target = ik_targets_node.get_node_or_null("RightThumbTarget")
-		var right_index_target = ik_targets_node.get_node_or_null("RightIndexTarget")
-		var right_middle_target = ik_targets_node.get_node_or_null("RightMiddleTarget")
-
-		# Get weapon grip transform for positioning fingers
-		var grip_pos = equipped_weapon.main_grip.global_position
-		var grip_basis = equipped_weapon.main_grip.global_transform.basis
-
-		# Position fingers to curl around grip with proper spacing
-		# Thumb opposes other fingers on opposite side of grip
-		if right_thumb_target:
-			# Thumb wraps around left side, slightly back and down
-			var thumb_offset = grip_basis * Vector3(-0.035, -0.015, 0.025)
-			right_thumb_target.global_position = grip_pos + thumb_offset
-
-		# Index finger extends forward for trigger
-		if right_index_target:
-			# Index goes forward toward trigger, slightly right
-			var index_offset = grip_basis * Vector3(0.02, -0.02, -0.04)
-			right_index_target.global_position = grip_pos + index_offset
-
-		# Middle finger wraps around grip front-right
-		if right_middle_target:
-			# Middle finger curves around right side of grip
-			var middle_offset = grip_basis * Vector3(0.03, -0.025, -0.015)
-			right_middle_target.global_position = grip_pos + middle_offset
+	# FINGER POSITIONING: Disabled - finger IK creates circular dependency with weapon
+	# Hand rotation alone provides proper grip orientation without conflicts
+	# TODO: Implement finger animation via AnimationTree blend instead of IK
+	#if equipped_weapon and equipped_weapon.main_grip:
+	#	var right_thumb_target = ik_targets_node.get_node_or_null("RightThumbTarget")
+	#	var right_index_target = ik_targets_node.get_node_or_null("RightIndexTarget")
+	#	var right_middle_target = ik_targets_node.get_node_or_null("RightMiddleTarget")
+	#	# ... (finger positioning code disabled)
 
 	# LEFT ARM: Position elbow and wrist targets to follow hand target
 	if left_hand_target and left_elbow_target and left_wrist_target:
@@ -2191,13 +2181,14 @@ func _process(_delta):
 			if right_elbow_ik:
 				right_elbow_ik.start()
 
-			# Finger IK - now uses fixed positions based on hand target, avoiding circular dependency
-			if right_thumb_ik:
-				right_thumb_ik.start()
-			if right_index_ik:
-				right_index_ik.start()
-			if right_middle_ik:
-				right_middle_ik.start()
+			# Finger IK disabled - creates circular dependency with weapon positioning
+			# Hand rotation alone provides proper grip orientation
+			#if right_thumb_ik:
+			#	right_thumb_ik.start()
+			#if right_index_ik:
+			#	right_index_ik.start()
+			#if right_middle_ik:
+			#	right_middle_ik.start()
 
 			# Left arm IK control based on weapon state
 			if weapon_state == WeaponState.AIMING:
@@ -2240,13 +2231,14 @@ func _process(_delta):
 			if right_elbow_ik:
 				right_elbow_ik.start()
 
-			# Finger IK - grips weapon handle
-			if right_thumb_ik:
-				right_thumb_ik.start()
-			if right_index_ik:
-				right_index_ik.start()
-			if right_middle_ik:
-				right_middle_ik.start()
+			# Finger IK disabled - creates circular dependency with weapon positioning
+			# Hand rotation alone provides proper grip orientation
+			#if right_thumb_ik:
+			#	right_thumb_ik.start()
+			#if right_index_ik:
+			#	right_index_ik.start()
+			#if right_middle_ik:
+			#	right_middle_ik.start()
 
 			# Left arm IK only when aiming
 			if weapon_state == WeaponState.AIMING:

@@ -67,7 +67,7 @@ collision_layer = 16
 collision_mask = 0
 script = ExtResource("5")
 target_color = Color(1, 0.5, 0, 1)
-target_size = 0.08
+target_size = 0.03
 show_in_game = true
 
 [node name="RightElbowTarget" type="Area3D" parent="IKTargets"]
@@ -76,7 +76,7 @@ collision_layer = 16
 collision_mask = 0
 script = ExtResource("5")
 target_color = Color(0, 1, 0.5, 1)
-target_size = 0.08
+target_size = 0.03
 show_in_game = true
 
 [node name="LeftWristTarget" type="Area3D" parent="IKTargets"]
@@ -85,7 +85,7 @@ collision_layer = 16
 collision_mask = 0
 script = ExtResource("5")
 target_color = Color(1, 0, 0.5, 1)
-target_size = 0.08
+target_size = 0.03
 show_in_game = true
 
 [node name="RightWristTarget" type="Area3D" parent="IKTargets"]
@@ -94,7 +94,7 @@ collision_layer = 16
 collision_mask = 0
 script = ExtResource("5")
 target_color = Color(0.5, 1, 0, 1)
-target_size = 0.08
+target_size = 0.03
 show_in_game = true
 
 [node name="LeftHandTarget" type="Area3D" parent="IKTargets"]
@@ -103,7 +103,7 @@ collision_layer = 16
 collision_mask = 0
 script = ExtResource("5")
 target_color = Color(1, 0, 0, 1)
-target_size = 0.1
+target_size = 0.04
 show_in_game = true
 
 [node name="RightHandTarget" type="Area3D" parent="IKTargets"]
@@ -112,7 +112,7 @@ collision_layer = 16
 collision_mask = 0
 script = ExtResource("5")
 target_color = Color(0, 1, 0, 1)
-target_size = 0.1
+target_size = 0.04
 show_in_game = true
 
 [node name="LeftFootTarget" type="Area3D" parent="IKTargets"]
@@ -121,7 +121,7 @@ collision_layer = 16
 collision_mask = 0
 script = ExtResource("5")
 target_color = Color(0, 0, 1, 1)
-target_size = 0.1
+target_size = 0.04
 show_in_game = true
 
 [node name="RightFootTarget" type="Area3D" parent="IKTargets"]
@@ -130,5 +130,5 @@ collision_layer = 16
 collision_mask = 0
 script = ExtResource("5")
 target_color = Color(1, 1, 0, 1)
-target_size = 0.1
+target_size = 0.04
 show_in_game = true
