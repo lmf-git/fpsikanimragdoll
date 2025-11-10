@@ -147,8 +147,8 @@ func equip(character: Node3D, hand_attachment: Node3D = null):
 		# Get grip offset in local space
 		var grip_local_pos = main_grip.position
 
-		# No rotation offset needed - hand IK handles orientation
-		transform.basis = Basis()
+		# Rotate 180° around X axis to flip gun right-side up
+		transform.basis = Basis().rotated(Vector3.RIGHT, deg_to_rad(180))
 
 		# Position weapon so grip point is at hand origin (0,0,0 in hand local space)
 		# This means weapon position = -grip_offset rotated by weapon basis

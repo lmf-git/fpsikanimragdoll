@@ -37,30 +37,27 @@ main_grip = NodePath("MainGrip")
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
 shape = SubResource("BoxShape3D_pistol")
 
-[node name="VisualRoot" type="Node3D" parent="."]
-transform = Transform3D(-1, 0, 0, 0, -1, 0, 0, 0, 1, 0, 0, 0)
-
-[node name="Slide" type="MeshInstance3D" parent="VisualRoot"]
+[node name="Slide" type="MeshInstance3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, -0.015)
 mesh = SubResource("BoxMesh_slide")
 surface_material_override/0 = SubResource("Material_pistol")
 
-[node name="Barrel" type="MeshInstance3D" parent="VisualRoot"]
+[node name="Barrel" type="MeshInstance3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -0.1)
 mesh = SubResource("BoxMesh_barrel")
 surface_material_override/0 = SubResource("Material_pistol")
 
-[node name="Grip" type="MeshInstance3D" parent="VisualRoot"]
+[node name="Grip" type="MeshInstance3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 0.92388, 0.382683, 0, -0.382683, 0.92388, 0, -0.04, 0.04)
 mesh = SubResource("BoxMesh_grip")
 surface_material_override/0 = SubResource("Material_pistol")
 
-[node name="TriggerGuard" type="MeshInstance3D" parent="VisualRoot"]
+[node name="TriggerGuard" type="MeshInstance3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.015, 0.01)
 mesh = SubResource("BoxMesh_trigger_guard")
 surface_material_override/0 = SubResource("Material_pistol")
 
-[node name="Trigger" type="MeshInstance3D" parent="VisualRoot"]
+[node name="Trigger" type="MeshInstance3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.02, 0.015)
 mesh = SubResource("BoxMesh_trigger")
 surface_material_override/0 = SubResource("Material_pistol")
