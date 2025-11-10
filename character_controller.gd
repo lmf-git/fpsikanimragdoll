@@ -1996,17 +1996,18 @@ func _update_weapon_ik_targets():
 		right_hand_target.global_position = target_pos
 
 		# Set hand rotation to grip weapon properly
-		# Hand rotates to grip: palm down, thumb up, fingers forward
+		# For right-handed pistol grip: thumb up, palm faces left (inward), back of hand faces right
 		var camera_forward = -active_camera.global_transform.basis.z
 		var camera_right = active_camera.global_transform.basis.x
 		var camera_up = active_camera.global_transform.basis.y
 
-		# Pistol grip rotation: hand rotates so palm faces down and inward
-		# The hand needs to rotate ~90° from camera basis to grip properly
-		# Final orientation: thumb points up, palm faces left/down, fingers wrap around grip
-		var grip_right = camera_forward  # Thumb points in direction of aim
-		var grip_up = camera_right  # Back of hand points right
-		var grip_forward = -camera_up  # Palm faces down
+		# Pistol grip orientation for right hand:
+		# - Thumb points UP (Y axis)
+		# - Palm faces INWARD/LEFT (toward body center)
+		# - Back of hand faces OUTWARD/RIGHT
+		var grip_right = camera_up  # X axis: thumb points up
+		var grip_up = camera_right  # Y axis: back of hand points right (outward)
+		var grip_forward = -camera_right  # Z axis: palm faces left (inward toward body)
 
 		var grip_basis = Basis(grip_right, grip_up, grip_forward)
 		right_hand_target.global_transform.basis = grip_basis
