@@ -82,8 +82,8 @@ var weapon_state: WeaponState = WeaponState.READY
 var is_weapon_sheathed: bool = false  # Toggle for sheathed state
 
 # Weapon positioning - skeleton-relative offsets
-@export var aim_weapon_offset: Vector3 = Vector3(0.15, 0.35, -1.5)  # Offset when aiming down sights (further forward so hands don't rotate inwards)
-@export var ready_weapon_offset: Vector3 = Vector3(0.25, 0.1, -1.4)  # Offset when ready/moving (further forward to prevent hand inward rotation)
+@export var aim_weapon_offset: Vector3 = Vector3(0.15, 0.25, -1.5)  # Offset when aiming down sights (lowered for better hand position)
+@export var ready_weapon_offset: Vector3 = Vector3(0.25, 0.0, -1.4)  # Offset when ready/moving (lowered to chest level)
 @export var sheathed_weapon_offset: Vector3 = Vector3(0.5, -0.6, 0.2)  # Offset when sheathed at side
 @export var weapon_transition_speed: float = 8.0  # Speed of state transitions
 
@@ -1473,28 +1473,34 @@ func _fill_gunshot_buffer():
 	if not playback:
 		return
 
-	# Generate 0.15 second of gunshot sound with HEAVY BASS
-	var samples = 3307  # 0.15s at 22050Hz for longer boom
+	# Generate realistic gunshot: sharp attack with filtered noise
+	var samples = 2205  # 0.1s at 22050Hz
+
+	# Simple low-pass filter state
+	var filtered_sample = 0.0
+	var filter_alpha = 0.3
+
 	for i in range(samples):
 		var t = float(i) / float(samples)
 
-		# Two-stage envelope: sharp attack, then slower decay for bass
-		var env = exp(-t * 12.0)  # Slower decay for deeper boom
-		var bass_env = exp(-t * 6.0)  # Even slower for sub-bass
+		# Very sharp attack, quick decay for realistic gunshot
+		var env = exp(-t * 25.0)  # Sharp decay
 
-		# HEAVY low frequencies for powerful boom
-		var sub_bass = sin(t * 40.0 * TAU) * 0.7 * bass_env  # Deep sub-bass thump
-		var bass = sin(t * 80.0 * TAU) * 0.9 * env  # Main bass boom (was 150Hz)
-		var mid = sin(t * 400.0 * TAU) * 0.4 * env  # Mid-range punch
-		var crack = sin(t * 1500.0 * TAU) * 0.2 * env  # High crack
-		var noise_val = (randf() * 2.0 - 1.0) * 0.2 * env  # Gunpowder noise
+		# Generate white noise and low-pass filter it for bass
+		var noise = (randf() * 2.0 - 1.0)
+		filtered_sample = filter_alpha * noise + (1.0 - filter_alpha) * filtered_sample
 
-		# Mix with emphasis on bass frequencies
-		var sample = (sub_bass + bass + mid + crack + noise_val) * 1.0
-		sample = clamp(sample, -1.0, 1.0)  # Prevent clipping
+		# Initial sharp crack (first 5% of sound)
+		var crack = 0.0
+		if t < 0.05:
+			crack = noise * (1.0 - t / 0.05) * 0.8
+
+		# Mix filtered bass noise with sharp crack
+		var sample = (filtered_sample * 0.7 + crack) * env
+		sample = clamp(sample, -1.0, 1.0)
 		playback.push_frame(Vector2(sample, sample))
 
-	print("Gunshot sound played with BOOM")
+	print("Gunshot sound: BANG!")
 
 func _apply_recoil():
 	"""Apply recoil to camera and weapon"""
