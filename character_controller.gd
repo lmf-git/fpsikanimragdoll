@@ -119,8 +119,10 @@ var muzzle_flash_light: OmniLight3D = null
 var muzzle_flash_timer: float = 0.0
 const MUZZLE_FLASH_DURATION: float = 0.05  # 50ms flash
 
-# Gunshot audio
-var gunshot_audio: AudioStreamPlayer3D = null
+# Gunshot audio - use pool to handle rapid fire without stopping
+var gunshot_audio_pool: Array[AudioStreamPlayer3D] = []
+const AUDIO_POOL_SIZE: int = 5  # 5 simultaneous gunshot sounds max
+var current_audio_index: int = 0
 
 # Shooting state
 var is_trigger_held: bool = false  # Track if left mouse button is held
@@ -1551,25 +1553,25 @@ func _trigger_muzzle_flash():
 	else:
 		smoke.global_rotation = equipped_weapon.global_rotation
 
-	# Particle settings - small smoke puff from barrel
+	# Particle settings - subtle smoke puff from barrel
 	smoke.emitting = true
 	smoke.one_shot = true
-	smoke.explosiveness = 0.7  # Quick burst
-	smoke.amount = 12  # Small amount
-	smoke.lifetime = 1.0  # Short lifetime
+	smoke.explosiveness = 0.6  # Quick burst
+	smoke.amount = 6  # Reduced amount for subtler effect
+	smoke.lifetime = 0.8  # Shorter lifetime
 	smoke.speed_scale = 1.0
 
 	# Create particle material
 	var smoke_material = ParticleProcessMaterial.new()
 	smoke_material.direction = Vector3(0, 0, -1)  # Forward in local space (from barrel)
-	smoke_material.spread = 8.0  # Tight cone
-	smoke_material.initial_velocity_min = 2.0
-	smoke_material.initial_velocity_max = 4.0
-	smoke_material.gravity = Vector3(0, 0.2, 0)  # Slight upward drift
+	smoke_material.spread = 5.0  # Tighter cone for less spread
+	smoke_material.initial_velocity_min = 1.0  # Reduced velocity
+	smoke_material.initial_velocity_max = 2.0
+	smoke_material.gravity = Vector3(0, 0.15, 0)  # Slight upward drift
 	smoke_material.damping_min = 1.5
 	smoke_material.damping_max = 2.0
-	smoke_material.scale_min = 0.08
-	smoke_material.scale_max = 0.12
+	smoke_material.scale_min = 0.03  # Much smaller particles
+	smoke_material.scale_max = 0.06
 	smoke_material.scale_curve = _create_muzzle_smoke_scale_curve()
 	smoke_material.color = Color(0.3, 0.3, 0.35, 0.6)  # Gray-blue gunpowder smoke
 	smoke_material.color_ramp = _create_muzzle_smoke_fade_gradient()
@@ -1630,35 +1632,43 @@ func _create_smoke_mesh() -> QuadMesh:
 	return mesh
 
 func _play_gunshot_sound():
-	"""Play realistic gunshot sound"""
+	"""Play realistic gunshot sound using audio pool for rapid fire support"""
 	if not equipped_weapon:
 		return
 
-	# Create audio player if it doesn't exist
-	if not gunshot_audio:
-		gunshot_audio = AudioStreamPlayer3D.new()
-		gunshot_audio.max_distance = 50.0
-		gunshot_audio.unit_size = 10.0  # Very loud
-		add_child(gunshot_audio)
+	# Initialize audio pool if empty
+	if gunshot_audio_pool.is_empty():
+		for i in range(AUDIO_POOL_SIZE):
+			var audio_player = AudioStreamPlayer3D.new()
+			audio_player.max_distance = 50.0
+			audio_player.unit_size = 10.0  # Very loud
 
-	# Create gunshot using AudioStreamGenerator with higher quality
-	var generator = AudioStreamGenerator.new()
-	generator.mix_rate = 44100.0  # Standard CD quality for better sound
-	generator.buffer_length = 0.15  # Slightly longer buffer
+			# Create gunshot generator stream (reusable)
+			var generator = AudioStreamGenerator.new()
+			generator.mix_rate = 44100.0  # Standard CD quality
+			generator.buffer_length = 0.15
+			audio_player.stream = generator
 
-	gunshot_audio.stream = generator
-	gunshot_audio.global_position = equipped_weapon.global_position
-	gunshot_audio.play()
+			add_child(audio_player)
+			gunshot_audio_pool.append(audio_player)
+
+	# Get next available audio player from pool (round-robin)
+	var audio_player = gunshot_audio_pool[current_audio_index]
+	current_audio_index = (current_audio_index + 1) % AUDIO_POOL_SIZE
+
+	# Position and play
+	audio_player.global_position = equipped_weapon.global_position
+	audio_player.play()
 
 	# Fill buffer in next frame
-	_fill_gunshot_buffer.call_deferred()
+	_fill_gunshot_buffer.call_deferred(audio_player)
 
-func _fill_gunshot_buffer():
+func _fill_gunshot_buffer(audio_player: AudioStreamPlayer3D):
 	"""Fill the audio buffer with realistic multi-layered gunshot sound"""
-	if not gunshot_audio:
+	if not audio_player or not audio_player.is_inside_tree():
 		return
 
-	var playback = gunshot_audio.get_stream_playback()
+	var playback = audio_player.get_stream_playback()
 	if not playback:
 		return
 
@@ -2070,31 +2080,41 @@ func _update_weapon_ik_targets():
 		var wrist_pos = right_elbow_target.global_position.lerp(right_hand_target.global_position, 0.6)
 		right_wrist_target.global_position = wrist_pos
 
-	# FINGER POSITIONING: Position finger targets to grip weapon
-	if equipped_weapon and equipped_weapon.main_grip:
-		var right_thumb_target = ik_targets_node.get_node_or_null("RightThumbTarget")
-		var right_index_target = ik_targets_node.get_node_or_null("RightIndexTarget")
-		var right_middle_target = ik_targets_node.get_node_or_null("RightMiddleTarget")
+	# FINGER POSITIONING: Position finger targets around a fixed grip position
+	# Define grip position based on hand target and camera aim (independent of weapon)
+	if equipped_weapon and right_hand_target:
+		var active_camera = fps_camera if camera_mode == 0 else tps_camera
+		if active_camera:
+			var right_thumb_target = ik_targets_node.get_node_or_null("RightThumbTarget")
+			var right_index_target = ik_targets_node.get_node_or_null("RightIndexTarget")
+			var right_middle_target = ik_targets_node.get_node_or_null("RightMiddleTarget")
 
-		if right_hand_target:
-			# Get weapon grip basis
-			var grip_basis = equipped_weapon.main_grip.global_transform.basis
-			var grip_pos = equipped_weapon.main_grip.global_position
+			# Calculate grip position from camera aim direction
+			var camera_forward = -active_camera.global_transform.basis.z
+			var camera_right = active_camera.global_transform.basis.x
+			var camera_up = active_camera.global_transform.basis.y
 
-			# Thumb wraps around left side of grip (opposite side from other fingers)
+			# Create grip basis aligned with camera aim
+			var grip_basis = Basis(camera_right, camera_up, -camera_forward)
+
+			# Grip position is at hand target
+			var grip_center = right_hand_target.global_position
+
+			# Position fingers around grip center with fixed offsets
+			# Thumb wraps around left side of grip
 			if right_thumb_target:
-				var thumb_offset = grip_basis.x * -0.04 + grip_basis.y * -0.02  # Left and down
-				right_thumb_target.global_position = grip_pos + thumb_offset
+				var thumb_offset = grip_basis * Vector3(-0.04, -0.02, 0.0)  # Left and down
+				right_thumb_target.global_position = grip_center + thumb_offset
 
 			# Index finger wraps around front/right of grip (trigger finger)
 			if right_index_target:
-				var index_offset = grip_basis.x * 0.03 + grip_basis.y * -0.03 + grip_basis.z * 0.02  # Right, down, forward
-				right_index_target.global_position = grip_pos + index_offset
+				var index_offset = grip_basis * Vector3(0.03, -0.03, -0.02)  # Right, down, back (trigger)
+				right_index_target.global_position = grip_center + index_offset
 
 			# Middle finger wraps around right side of grip
 			if right_middle_target:
-				var middle_offset = grip_basis.x * 0.04 + grip_basis.y * -0.04  # Right and down
-				right_middle_target.global_position = grip_pos + middle_offset
+				var middle_offset = grip_basis * Vector3(0.04, -0.04, 0.0)  # Right and down
+				right_middle_target.global_position = grip_center + middle_offset
 
 	# LEFT ARM: Position elbow and wrist targets to follow hand target
 	if left_hand_target and left_elbow_target and left_wrist_target:
