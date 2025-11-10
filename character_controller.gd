@@ -60,8 +60,12 @@ var is_running: bool = false
 
 # IK System
 @export var ik_enabled: bool = true
-@export var left_hand_ik: SkeletonIK3D
-@export var right_hand_ik: SkeletonIK3D
+# Arm IK chains - separate chains for elbow, wrist, and hand control
+@export var left_elbow_ik: SkeletonIK3D  # Shoulder -> Lower_Arm (controls elbow position)
+@export var right_elbow_ik: SkeletonIK3D
+@export var left_wrist_ik: SkeletonIK3D  # Lower_Arm -> Hand (controls wrist/hand position)
+@export var right_wrist_ik: SkeletonIK3D
+# Leg IK
 @export var left_foot_ik: SkeletonIK3D
 @export var right_foot_ik: SkeletonIK3D
 
@@ -334,63 +338,74 @@ func _create_ik_system():
 		print("ERROR: IKTargets node not found!")
 		return
 
+	# Get arm IK targets
+	var left_elbow_target = ik_targets_node.get_node_or_null("LeftElbowTarget")
+	var right_elbow_target = ik_targets_node.get_node_or_null("RightElbowTarget")
+	var left_wrist_target = ik_targets_node.get_node_or_null("LeftWristTarget")
+	var right_wrist_target = ik_targets_node.get_node_or_null("RightWristTarget")
 	var left_hand_target = ik_targets_node.get_node_or_null("LeftHandTarget")
 	var right_hand_target = ik_targets_node.get_node_or_null("RightHandTarget")
+
+	# Get foot IK targets
 	var left_foot_target = ik_targets_node.get_node_or_null("LeftFootTarget")
 	var right_foot_target = ik_targets_node.get_node_or_null("RightFootTarget")
 
-	print("Found targets - LH: ", left_hand_target, ", RH: ", right_hand_target,
-	      ", LF: ", left_foot_target, ", RF: ", right_foot_target)
+	print("Found arm targets - LE: ", left_elbow_target, ", RE: ", right_elbow_target,
+	      ", LW: ", left_wrist_target, ", RW: ", right_wrist_target,
+	      ", LH: ", left_hand_target, ", RH: ", right_hand_target)
 
-	# Create elbow pole targets for better IK solving
-	var left_elbow_pole = Node3D.new()
-	left_elbow_pole.name = "LeftElbowPole"
-	ik_targets_node.add_child(left_elbow_pole)
-	left_elbow_pole.position = Vector3(-0.3, 1.0, 0.5)  # To the left, forward of body
+	# Create LEFT ARM IK chains
+	# Chain 1: Shoulder -> Lower_Arm (controls elbow position)
+	if left_elbow_target:
+		left_elbow_ik = SkeletonIK3D.new()
+		left_elbow_ik.name = "LeftElbowIK"
+		left_elbow_ik.root_bone = "characters3d.com___L_Shoulder"
+		left_elbow_ik.tip_bone = "characters3d.com___L_Lower_Arm"
+		left_elbow_ik.interpolation = 1.0  # Instant IK solving for responsive weapon movement
+		left_elbow_ik.max_iterations = 20
+		skeleton.add_child(left_elbow_ik)
+		left_elbow_ik.set_target_node(left_elbow_target.get_path())
+		print("Created LeftElbowIK (Shoulder -> Lower_Arm)")
 
-	var right_elbow_pole = Node3D.new()
-	right_elbow_pole.name = "RightElbowPole"
-	ik_targets_node.add_child(right_elbow_pole)
-	right_elbow_pole.position = Vector3(0.3, 1.0, 0.5)  # To the right, forward of body
+	# Chain 2: Lower_Arm -> Hand (controls wrist/hand position)
+	# We'll use wrist target if available, otherwise hand target
+	var left_hand_final_target = left_wrist_target if left_wrist_target else left_hand_target
+	if left_hand_final_target:
+		left_wrist_ik = SkeletonIK3D.new()
+		left_wrist_ik.name = "LeftWristIK"
+		left_wrist_ik.root_bone = "characters3d.com___L_Lower_Arm"
+		left_wrist_ik.tip_bone = "characters3d.com___L_Hand"
+		left_wrist_ik.interpolation = 1.0
+		left_wrist_ik.max_iterations = 20
+		skeleton.add_child(left_wrist_ik)
+		left_wrist_ik.set_target_node(left_hand_final_target.get_path())
+		print("Created LeftWristIK (Lower_Arm -> Hand)")
 
-	# Create wrist pole targets for refined hand/wrist positioning
-	var left_wrist_pole = Node3D.new()
-	left_wrist_pole.name = "LeftWristPole"
-	ik_targets_node.add_child(left_wrist_pole)
-	left_wrist_pole.position = Vector3(-0.2, 1.0, 0.3)  # Closer to body than elbow
+	# Create RIGHT ARM IK chains
+	# Chain 1: Shoulder -> Lower_Arm (controls elbow position)
+	if right_elbow_target:
+		right_elbow_ik = SkeletonIK3D.new()
+		right_elbow_ik.name = "RightElbowIK"
+		right_elbow_ik.root_bone = "characters3d.com___R_Shoulder"
+		right_elbow_ik.tip_bone = "characters3d.com___R_Lower_Arm"
+		right_elbow_ik.interpolation = 1.0
+		right_elbow_ik.max_iterations = 20
+		skeleton.add_child(right_elbow_ik)
+		right_elbow_ik.set_target_node(right_elbow_target.get_path())
+		print("Created RightElbowIK (Shoulder -> Lower_Arm)")
 
-	var right_wrist_pole = Node3D.new()
-	right_wrist_pole.name = "RightWristPole"
-	ik_targets_node.add_child(right_wrist_pole)
-	right_wrist_pole.position = Vector3(0.2, 1.0, 0.3)  # Closer to body than elbow
-
-	# Create LeftHandIK
-	if left_hand_target:
-		left_hand_ik = SkeletonIK3D.new()
-		left_hand_ik.name = "LeftHandIK"
-		left_hand_ik.root_bone = "characters3d.com___L_Shoulder"
-		left_hand_ik.tip_bone = "characters3d.com___L_Hand"
-		left_hand_ik.interpolation = 1.0  # Instant IK solving for responsive weapon movement
-		left_hand_ik.max_iterations = 20  # More iterations for better accuracy
-		left_hand_ik.use_magnet = true  # Enable pole target
-		skeleton.add_child(left_hand_ik)
-		left_hand_ik.set_target_node(left_hand_target.get_path())
-		left_hand_ik.set_magnet_position(left_elbow_pole.global_position)
-		print("Created LeftHandIK with elbow pole")
-
-	# Create RightHandIK
-	if right_hand_target:
-		right_hand_ik = SkeletonIK3D.new()
-		right_hand_ik.name = "RightHandIK"
-		right_hand_ik.root_bone = "characters3d.com___R_Shoulder"
-		right_hand_ik.tip_bone = "characters3d.com___R_Hand"
-		right_hand_ik.interpolation = 1.0  # Instant IK solving for responsive weapon movement
-		right_hand_ik.max_iterations = 20  # More iterations for better accuracy
-		right_hand_ik.use_magnet = true  # Enable pole target
-		skeleton.add_child(right_hand_ik)
-		right_hand_ik.set_target_node(right_hand_target.get_path())
-		right_hand_ik.set_magnet_position(right_elbow_pole.global_position)
-		print("Created RightHandIK with elbow pole")
+	# Chain 2: Lower_Arm -> Hand (controls wrist/hand position)
+	var right_hand_final_target = right_wrist_target if right_wrist_target else right_hand_target
+	if right_hand_final_target:
+		right_wrist_ik = SkeletonIK3D.new()
+		right_wrist_ik.name = "RightWristIK"
+		right_wrist_ik.root_bone = "characters3d.com___R_Lower_Arm"
+		right_wrist_ik.tip_bone = "characters3d.com___R_Hand"
+		right_wrist_ik.interpolation = 1.0
+		right_wrist_ik.max_iterations = 20
+		skeleton.add_child(right_wrist_ik)
+		right_wrist_ik.set_target_node(right_hand_final_target.get_path())
+		print("Created RightWristIK (Lower_Arm -> Hand)")
 
 	# Create LeftFootIK
 	if left_foot_target:
@@ -726,8 +741,10 @@ func _input(event):
 		print("\n=== TOGGLE IK PRESSED ===")
 		ik_enabled = !ik_enabled
 		print("IK enabled: ", ik_enabled)
-		print("Left hand IK: ", left_hand_ik)
-		print("Right hand IK: ", right_hand_ik)
+		print("Left elbow IK: ", left_elbow_ik)
+		print("Right elbow IK: ", right_elbow_ik)
+		print("Left wrist IK: ", left_wrist_ik)
+		print("Right wrist IK: ", right_wrist_ik)
 		print("Left foot IK: ", left_foot_ik)
 		print("Right foot IK: ", right_foot_ik)
 		print("=== END IK TOGGLE ===\n")
@@ -1814,40 +1831,70 @@ func _update_weapon_ik_targets():
 					var left_hand_rest = skeleton.global_transform * skeleton.get_bone_rest(l_hand_id).origin
 					left_hand_target.global_position = left_hand_rest
 
-	# Update elbow pole positions to guide arm bending
-	var left_elbow_pole = ik_targets_node.get_node_or_null("LeftElbowPole")
-	var right_elbow_pole = ik_targets_node.get_node_or_null("RightElbowPole")
+	# Update elbow and wrist IK targets for proper arm positioning
+	var left_elbow_target = ik_targets_node.get_node_or_null("LeftElbowTarget")
+	var right_elbow_target = ik_targets_node.get_node_or_null("RightElbowTarget")
+	var left_wrist_target = ik_targets_node.get_node_or_null("LeftWristTarget")
+	var right_wrist_target = ik_targets_node.get_node_or_null("RightWristTarget")
 
-	if right_hand_target and right_elbow_pole:
-		# Position right elbow pole to guide elbow to bend outward
-		# Place it to the right and slightly forward of the hand target
+	# RIGHT ARM: Position elbow and wrist targets for natural gun holding
+	if right_hand_target and right_elbow_target and right_wrist_target:
 		var body_basis = Basis(Vector3.UP, body_rotation_y)
-		var elbow_offset = Vector3(0.2, 0.0, -0.2)  # Right and forward
-		right_elbow_pole.global_position = right_hand_target.global_position + body_basis * elbow_offset
 
-	if left_hand_target and left_elbow_pole:
-		# Position left elbow pole to guide elbow to bend outward
-		# Place it to the left and slightly forward of the hand target
+		# Position right elbow - should be down and to the right of chest, slightly back
+		# This creates a natural bent arm when holding weapon
+		var anchor_transform: Transform3D
+		if chest_bone_id >= 0:
+			anchor_transform = skeleton.global_transform * skeleton.get_bone_global_pose(chest_bone_id)
+		else:
+			anchor_transform = global_transform
+
+		# Elbow position relative to chest
+		var elbow_offset = Vector3(0.25, -0.15, 0.1)  # Right, down, slightly back from chest
+		right_elbow_target.global_position = anchor_transform.origin + body_basis * elbow_offset
+
+		# Position right wrist - halfway between elbow and hand, slightly adjusted for weapon grip
+		# The wrist should be between elbow and hand but closer to hand
+		var wrist_pos = right_elbow_target.global_position.lerp(right_hand_target.global_position, 0.65)
+		# Adjust wrist slightly outward for better weapon grip angle
+		wrist_pos += body_basis * Vector3(0.05, 0.0, 0.0)  # Slightly outward
+		right_wrist_target.global_position = wrist_pos
+
+	# LEFT ARM: Position elbow and wrist targets based on weapon type
+	if left_hand_target and left_elbow_target and left_wrist_target:
 		var body_basis = Basis(Vector3.UP, body_rotation_y)
-		var elbow_offset = Vector3(-0.2, 0.0, -0.2)  # Left and forward
-		left_elbow_pole.global_position = left_hand_target.global_position + body_basis * elbow_offset
+		var anchor_transform: Transform3D
+		if chest_bone_id >= 0:
+			anchor_transform = skeleton.global_transform * skeleton.get_bone_global_pose(chest_bone_id)
+		else:
+			anchor_transform = global_transform
 
-	# Update wrist pole positions for refined hand/wrist control
-	var left_wrist_pole = ik_targets_node.get_node_or_null("LeftWristPole")
-	var right_wrist_pole = ik_targets_node.get_node_or_null("RightWristPole")
+		if equipped_weapon.is_two_handed:
+			# Two-handed weapon: Left elbow should be more forward to support foregrip
+			var elbow_offset = Vector3(-0.2, -0.1, -0.15)  # Left, down, forward from chest
+			left_elbow_target.global_position = anchor_transform.origin + body_basis * elbow_offset
 
-	if right_hand_target and right_wrist_pole:
-		# Position right wrist pole closer to hand, slightly down and outward
-		# This helps guide the wrist orientation for proper weapon grip
-		var body_basis = Basis(Vector3.UP, body_rotation_y)
-		var wrist_offset = Vector3(0.1, -0.05, -0.1)  # Slightly right, down, and forward
-		right_wrist_pole.global_position = right_hand_target.global_position + body_basis * wrist_offset
+			# Left wrist between elbow and hand
+			var wrist_pos = left_elbow_target.global_position.lerp(left_hand_target.global_position, 0.65)
+			left_wrist_target.global_position = wrist_pos
+		else:
+			# Pistol: Left arm positioning depends on weapon state
+			if weapon_state == WeaponState.AIMING:
+				# When aiming with pistol, left arm comes up to support
+				var elbow_offset = Vector3(-0.25, -0.15, 0.05)  # Left, down, slightly forward
+				left_elbow_target.global_position = anchor_transform.origin + body_basis * elbow_offset
 
-	if left_hand_target and left_wrist_pole:
-		# Position left wrist pole for support hand positioning
-		var body_basis = Basis(Vector3.UP, body_rotation_y)
-		var wrist_offset = Vector3(-0.1, -0.05, -0.1)  # Slightly left, down, and forward
-		left_wrist_pole.global_position = left_hand_target.global_position + body_basis * wrist_offset
+				var wrist_pos = left_elbow_target.global_position.lerp(left_hand_target.global_position, 0.65)
+				left_wrist_target.global_position = wrist_pos
+			else:
+				# When not aiming, left arm stays at rest position
+				var l_elbow_id = skeleton.find_bone("characters3d.com___L_Lower_Arm")
+				var l_wrist_id = skeleton.find_bone("characters3d.com___L_Hand")
+				if l_elbow_id >= 0 and l_wrist_id >= 0:
+					var left_elbow_rest = skeleton.global_transform * skeleton.get_bone_rest(l_elbow_id).origin
+					var left_wrist_rest = skeleton.global_transform * skeleton.get_bone_rest(l_wrist_id).origin
+					left_elbow_target.global_position = left_elbow_rest
+					left_wrist_target.global_position = left_wrist_rest
 
 func _update_weapon_to_hand():
 	"""Position weapon to follow IK-transformed hand bone (called AFTER IK is applied)"""
@@ -1911,17 +1958,6 @@ func _process(_delta):
 		_update_weapon_ik_targets()
 
 	# STEP 2: Apply IK - start() moves bones to targets
-	# Update elbow pole magnet positions before applying IK
-	var ik_targets_node = get_node_or_null("IKTargets")
-	if ik_targets_node:
-		var left_elbow_pole = ik_targets_node.get_node_or_null("LeftElbowPole")
-		var right_elbow_pole = ik_targets_node.get_node_or_null("RightElbowPole")
-
-		if right_hand_ik and right_elbow_pole:
-			right_hand_ik.set_magnet_position(right_elbow_pole.global_position)
-		if left_hand_ik and left_elbow_pole:
-			left_hand_ik.set_magnet_position(left_elbow_pole.global_position)
-
 	if ik_enabled:
 		# IK enabled - apply foot IK always
 		if left_foot_ik:
@@ -1929,37 +1965,58 @@ func _process(_delta):
 		if right_foot_ik:
 			right_foot_ik.start()
 
-		# Hand IK depends on weapon equipped state
+		# Arm IK depends on weapon equipped state
 		if equipped_weapon:
-			# Weapon equipped - always use right hand IK to hold weapon
-			if right_hand_ik:
-				right_hand_ik.start()
-			# Left hand IK when AIMING for two-handed grip
+			# Weapon equipped - always use right arm IK to hold weapon
+			if right_elbow_ik:
+				right_elbow_ik.start()
+			if right_wrist_ik:
+				right_wrist_ik.start()
+
+			# Left arm IK control based on weapon state
 			if weapon_state == WeaponState.AIMING:
-				if left_hand_ik:
-					left_hand_ik.start()
+				# When aiming, activate left arm IK for two-handed grip or support
+				if left_elbow_ik:
+					left_elbow_ik.start()
+				if left_wrist_ik:
+					left_wrist_ik.start()
 			else:
-				# Not aiming - disable left hand IK for relaxed pose
-				if left_hand_ik:
-					left_hand_ik.stop()
+				# Not aiming - disable left arm IK for relaxed pose (one-handed grip)
+				if left_elbow_ik:
+					left_elbow_ik.stop()
+				if left_wrist_ik:
+					left_wrist_ik.stop()
 		else:
-			# No weapon - use default animation for hands
-			if left_hand_ik:
-				left_hand_ik.stop()
-			if right_hand_ik:
-				right_hand_ik.stop()
+			# No weapon - use default animation for arms
+			if left_elbow_ik:
+				left_elbow_ik.stop()
+			if left_wrist_ik:
+				left_wrist_ik.stop()
+			if right_elbow_ik:
+				right_elbow_ik.stop()
+			if right_wrist_ik:
+				right_wrist_ik.stop()
 	else:
-		# IK disabled - but keep hand IK active if weapon equipped
+		# IK disabled - but keep arm IK active if weapon equipped
 		if equipped_weapon:
-			# Keep right hand IK active to hold weapon
-			if right_hand_ik:
-				right_hand_ik.start()
-			# Left hand IK only when aiming
-			if weapon_state == WeaponState.AIMING and left_hand_ik:
-				left_hand_ik.start()
+			# Keep right arm IK active to hold weapon
+			if right_elbow_ik:
+				right_elbow_ik.start()
+			if right_wrist_ik:
+				right_wrist_ik.start()
+
+			# Left arm IK only when aiming
+			if weapon_state == WeaponState.AIMING:
+				if left_elbow_ik:
+					left_elbow_ik.start()
+				if left_wrist_ik:
+					left_wrist_ik.start()
 			else:
-				if left_hand_ik:
-					left_hand_ik.stop()
+				if left_elbow_ik:
+					left_elbow_ik.stop()
+				if left_wrist_ik:
+					left_wrist_ik.stop()
+
 			# Disable foot IK when IK is toggled off
 			if left_foot_ik:
 				left_foot_ik.stop()
@@ -1967,10 +2024,14 @@ func _process(_delta):
 				right_foot_ik.stop()
 		else:
 			# No weapon - stop all IK
-			if left_hand_ik:
-				left_hand_ik.stop()
-			if right_hand_ik:
-				right_hand_ik.stop()
+			if left_elbow_ik:
+				left_elbow_ik.stop()
+			if left_wrist_ik:
+				left_wrist_ik.stop()
+			if right_elbow_ik:
+				right_elbow_ik.stop()
+			if right_wrist_ik:
+				right_wrist_ik.stop()
 			if left_foot_ik:
 				left_foot_ik.stop()
 			if right_foot_ik:
