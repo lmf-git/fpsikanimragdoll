@@ -1374,22 +1374,6 @@ func pickup_weapon(weapon: Weapon):
 		equipped_weapon = weapon
 		nearby_weapon = null
 
-		# Debug: Verify weapon attachment
-		print("DEBUG: Weapon equipped!")
-		if right_hand_attachment:
-			print("  BoneAttachment position: ", right_hand_attachment.global_position)
-		else:
-			print("  BoneAttachment position: NULL")
-		if equipped_weapon.get_parent():
-			print("  Weapon parent: ", equipped_weapon.get_parent().name)
-		else:
-			print("  Weapon parent: NULL")
-		print("  Weapon global position: ", equipped_weapon.global_position)
-		print("  Weapon local position: ", equipped_weapon.position)
-		if skeleton and right_hand_bone_id >= 0:
-			var hand_bone_global = skeleton.global_transform * skeleton.get_bone_global_pose(right_hand_bone_id)
-			print("  Hand bone global position: ", hand_bone_global.origin)
-
 		# Weapon is now parented to hand bone and will automatically follow IK transforms
 
 func _shoot_weapon():
@@ -1987,13 +1971,13 @@ func _update_weapon_ik_targets():
 		var aim_right = aim_direction.cross(up_ref).normalized()
 		var aim_down = aim_right.cross(aim_direction).normalized()
 
-		# Position elbow out to the side and down to create natural arm bend
-		# Position elbow partway along the line from chest to hand
-		var elbow_pos = anchor_transform.origin + chest_to_hand * 0.4
+		# Position elbow along the line from chest to hand with slight offset
+		# Position elbow halfway along the arm
+		var elbow_pos = anchor_transform.origin + chest_to_hand * 0.5
 
-		# Moderate offset to the right and down for natural bend
-		elbow_pos += aim_right * 0.3   # To the right (reduced from 0.5)
-		elbow_pos += aim_down * 0.15   # Down for natural drop (reduced from 0.25)
+		# Gentle offset to the right and down for natural bend
+		elbow_pos += aim_right * 0.2   # Gentle outward offset
+		elbow_pos += aim_down * 0.1    # Gentle downward offset
 
 		right_elbow_target.global_position = elbow_pos
 
@@ -2016,12 +2000,12 @@ func _update_weapon_ik_targets():
 			var aim_right = aim_direction.cross(up_ref).normalized()
 			var aim_down = aim_right.cross(aim_direction).normalized()
 
-			# Position elbow out to the left side and down to create natural arm bend
-			var elbow_pos = anchor_transform.origin + chest_to_hand * 0.4
+			# Position elbow along the line from chest to hand with slight offset
+			var elbow_pos = anchor_transform.origin + chest_to_hand * 0.5
 
-			# Moderate offset to the left and down for natural bend
-			elbow_pos += aim_right * -0.3   # To the left (reduced from -0.5)
-			elbow_pos += aim_down * 0.15    # Down for natural drop (reduced from 0.25)
+			# Gentle offset to the left and down for natural bend
+			elbow_pos += aim_right * -0.2   # Gentle outward offset
+			elbow_pos += aim_down * 0.1     # Gentle downward offset
 
 			left_elbow_target.global_position = elbow_pos
 
@@ -2041,18 +2025,14 @@ func _update_weapon_ik_targets():
 func _update_weapon_to_hand():
 	"""Position weapon to follow IK-transformed hand bone (called AFTER IK is applied)"""
 	if not equipped_weapon:
-		print("DEBUG: _update_weapon_to_hand() - no equipped_weapon")
 		return
 	if not skeleton:
-		print("DEBUG: _update_weapon_to_hand() - no skeleton")
 		return
 	if right_hand_bone_id < 0:
-		print("DEBUG: _update_weapon_to_hand() - invalid right_hand_bone_id: ", right_hand_bone_id)
 		return
 
 	# Get the IK-transformed hand bone transform
 	var right_hand_transform = skeleton.global_transform * skeleton.get_bone_global_pose(right_hand_bone_id)
-	print("DEBUG: _update_weapon_to_hand() - hand transform: ", right_hand_transform.origin)
 
 	# Get camera for aim direction
 	var active_camera = fps_camera if camera_mode == 0 else tps_camera
@@ -2077,14 +2057,11 @@ func _update_weapon_to_hand():
 		var grip_local_pos = equipped_weapon.main_grip.position
 		var grip_world_offset = equipped_weapon.global_transform.basis * grip_local_pos
 		equipped_weapon.global_position = right_hand_transform.origin - grip_world_offset
-
-		print("DEBUG: Weapon at hand, pointing camera direction: ", equipped_weapon.global_position)
 	else:
 		# Fallback: point weapon forward from hand position
 		var camera_forward = -active_camera.global_transform.basis.z
 		equipped_weapon.global_position = right_hand_transform.origin
 		equipped_weapon.look_at(right_hand_transform.origin + camera_forward * 10.0, Vector3.UP)
-		print("DEBUG: No grip, weapon pointing camera aim")
 
 func _process(_delta):
 	# WEAPON UPDATE ORDER - CRITICAL for proper IK-based positioning:
