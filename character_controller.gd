@@ -65,6 +65,10 @@ var is_running: bool = false
 @export var right_elbow_ik: SkeletonIK3D
 @export var left_wrist_ik: SkeletonIK3D  # Lower_Arm -> Hand (controls wrist/hand position)
 @export var right_wrist_ik: SkeletonIK3D
+# Finger IK chains - for gripping weapons
+@export var right_thumb_ik: SkeletonIK3D  # Right thumb for grip
+@export var right_index_ik: SkeletonIK3D  # Right index for trigger
+@export var right_middle_ik: SkeletonIK3D  # Right middle for grip
 # Leg IK
 @export var left_foot_ik: SkeletonIK3D
 @export var right_foot_ik: SkeletonIK3D
@@ -420,6 +424,65 @@ func _create_ik_system():
 		skeleton.add_child(right_wrist_ik)
 		right_wrist_ik.set_target_node(right_hand_final_target.get_path())
 		print("Created RightWristIK (Lower_Arm -> Hand)")
+
+	# Create RIGHT FINGER IK chains for weapon gripping
+	# Create finger IK targets if they don't exist
+	var right_thumb_target = ik_targets_node.get_node_or_null("RightThumbTarget")
+	if not right_thumb_target:
+		right_thumb_target = Area3D.new()
+		right_thumb_target.name = "RightThumbTarget"
+		ik_targets_node.add_child(right_thumb_target)
+		print("Created RightThumbTarget")
+
+	var right_index_target = ik_targets_node.get_node_or_null("RightIndexTarget")
+	if not right_index_target:
+		right_index_target = Area3D.new()
+		right_index_target.name = "RightIndexTarget"
+		ik_targets_node.add_child(right_index_target)
+		print("Created RightIndexTarget")
+
+	var right_middle_target = ik_targets_node.get_node_or_null("RightMiddleTarget")
+	if not right_middle_target:
+		right_middle_target = Area3D.new()
+		right_middle_target.name = "RightMiddleTarget"
+		ik_targets_node.add_child(right_middle_target)
+		print("Created RightMiddleTarget")
+
+	# Thumb IK: Hand -> Thumb Distal
+	if right_thumb_target:
+		right_thumb_ik = SkeletonIK3D.new()
+		right_thumb_ik.name = "RightThumbIK"
+		right_thumb_ik.root_bone = "characters3d.com___R_Hand"
+		right_thumb_ik.tip_bone = "characters3d.com___R_Thumb_Distal"
+		right_thumb_ik.interpolation = 1.0
+		right_thumb_ik.max_iterations = 10
+		skeleton.add_child(right_thumb_ik)
+		right_thumb_ik.set_target_node(right_thumb_target.get_path())
+		print("Created RightThumbIK (Hand -> Thumb Distal)")
+
+	# Index finger IK: Hand -> Index Distal
+	if right_index_target:
+		right_index_ik = SkeletonIK3D.new()
+		right_index_ik.name = "RightIndexIK"
+		right_index_ik.root_bone = "characters3d.com___R_Hand"
+		right_index_ik.tip_bone = "characters3d.com___R_Index_Distal"
+		right_index_ik.interpolation = 1.0
+		right_index_ik.max_iterations = 10
+		skeleton.add_child(right_index_ik)
+		right_index_ik.set_target_node(right_index_target.get_path())
+		print("Created RightIndexIK (Hand -> Index Distal)")
+
+	# Middle finger IK: Hand -> Middle Distal
+	if right_middle_target:
+		right_middle_ik = SkeletonIK3D.new()
+		right_middle_ik.name = "RightMiddleIK"
+		right_middle_ik.root_bone = "characters3d.com___R_Hand"
+		right_middle_ik.tip_bone = "characters3d.com___R_Middle_Distal"
+		right_middle_ik.interpolation = 1.0
+		right_middle_ik.max_iterations = 10
+		skeleton.add_child(right_middle_ik)
+		right_middle_ik.set_target_node(right_middle_target.get_path())
+		print("Created RightMiddleIK (Hand -> Middle Distal)")
 
 	# Create LeftFootIK
 	if left_foot_target:
@@ -1986,6 +2049,32 @@ func _update_weapon_ik_targets():
 		var wrist_pos = right_elbow_target.global_position.lerp(right_hand_target.global_position, 0.6)
 		right_wrist_target.global_position = wrist_pos
 
+	# FINGER POSITIONING: Position finger targets to grip weapon
+	if equipped_weapon and equipped_weapon.main_grip:
+		var right_thumb_target = ik_targets_node.get_node_or_null("RightThumbTarget")
+		var right_index_target = ik_targets_node.get_node_or_null("RightIndexTarget")
+		var right_middle_target = ik_targets_node.get_node_or_null("RightMiddleTarget")
+
+		if right_hand_target:
+			# Get weapon grip basis
+			var grip_basis = equipped_weapon.main_grip.global_transform.basis
+			var grip_pos = equipped_weapon.main_grip.global_position
+
+			# Thumb wraps around left side of grip (opposite side from other fingers)
+			if right_thumb_target:
+				var thumb_offset = grip_basis.x * -0.04 + grip_basis.y * -0.02  # Left and down
+				right_thumb_target.global_position = grip_pos + thumb_offset
+
+			# Index finger wraps around front/right of grip (trigger finger)
+			if right_index_target:
+				var index_offset = grip_basis.x * 0.03 + grip_basis.y * -0.03 + grip_basis.z * 0.02  # Right, down, forward
+				right_index_target.global_position = grip_pos + index_offset
+
+			# Middle finger wraps around right side of grip
+			if right_middle_target:
+				var middle_offset = grip_basis.x * 0.04 + grip_basis.y * -0.04  # Right and down
+				right_middle_target.global_position = grip_pos + middle_offset
+
 	# LEFT ARM: Position elbow and wrist targets to follow hand target
 	if left_hand_target and left_elbow_target and left_wrist_target:
 		if equipped_weapon.is_two_handed or weapon_state == WeaponState.AIMING:
@@ -2024,24 +2113,25 @@ func _update_weapon_ik_targets():
 				left_wrist_target.global_position = left_wrist_rest
 
 func _update_weapon_to_hand():
-	"""Position weapon to follow IK-transformed hand bone (called AFTER IK is applied)"""
+	"""Position weapon at IK target location (called AFTER IK is applied)"""
 	if not equipped_weapon:
 		return
-	if not skeleton:
-		return
-	if right_hand_bone_id < 0:
-		return
-
-	# Get the IK-transformed hand bone transform
-	var right_hand_transform = skeleton.global_transform * skeleton.get_bone_global_pose(right_hand_bone_id)
 
 	# Get camera for aim direction
 	var active_camera = fps_camera if camera_mode == 0 else tps_camera
 	if not active_camera:
 		return
 
+	# Get the right hand IK target - this is where we want the weapon grip to be
+	var ik_targets_node = get_node_or_null("IKTargets")
+	if not ik_targets_node:
+		return
+
+	var right_hand_target = ik_targets_node.get_node_or_null("RightHandTarget")
+	if not right_hand_target:
+		return
+
 	# STEP 1: Orient weapon to point where camera is aiming
-	# Use camera forward direction, not hand rotation
 	if equipped_weapon.main_grip:
 		# Get camera aim direction
 		var camera_forward = -active_camera.global_transform.basis.z
@@ -2054,15 +2144,15 @@ func _update_weapon_to_hand():
 		var weapon_basis = Basis(camera_right, camera_up, -camera_forward)
 		equipped_weapon.global_transform.basis = weapon_basis
 
-		# Position weapon so grip aligns with hand bone
+		# Position weapon so grip aligns with hand IK target (not hand bone)
 		var grip_local_pos = equipped_weapon.main_grip.position
 		var grip_world_offset = equipped_weapon.global_transform.basis * grip_local_pos
-		equipped_weapon.global_position = right_hand_transform.origin - grip_world_offset
+		equipped_weapon.global_position = right_hand_target.global_position - grip_world_offset
 	else:
-		# Fallback: point weapon forward from hand position
+		# Fallback: point weapon forward from hand target position
 		var camera_forward = -active_camera.global_transform.basis.z
-		equipped_weapon.global_position = right_hand_transform.origin
-		equipped_weapon.look_at(right_hand_transform.origin + camera_forward * 10.0, Vector3.UP)
+		equipped_weapon.global_position = right_hand_target.global_position
+		equipped_weapon.look_at(right_hand_target.global_position + camera_forward * 10.0, Vector3.UP)
 
 func _process(_delta):
 	# WEAPON UPDATE ORDER - CRITICAL for proper IK-based positioning:
@@ -2091,6 +2181,14 @@ func _process(_delta):
 			if right_elbow_ik:
 				right_elbow_ik.start()
 
+			# Finger IK for weapon grip
+			if right_thumb_ik:
+				right_thumb_ik.start()
+			if right_index_ik:
+				right_index_ik.start()
+			if right_middle_ik:
+				right_middle_ik.start()
+
 			# Left arm IK control based on weapon state
 			if weapon_state == WeaponState.AIMING:
 				# When aiming, activate left arm IK for two-handed grip or support
@@ -2115,6 +2213,13 @@ func _process(_delta):
 				right_elbow_ik.stop()
 			if right_wrist_ik:
 				right_wrist_ik.stop()
+			# Stop finger IK
+			if right_thumb_ik:
+				right_thumb_ik.stop()
+			if right_index_ik:
+				right_index_ik.stop()
+			if right_middle_ik:
+				right_middle_ik.stop()
 	else:
 		# IK disabled - but keep arm IK active if weapon equipped
 		if equipped_weapon:
@@ -2124,6 +2229,14 @@ func _process(_delta):
 				right_wrist_ik.start()
 			if right_elbow_ik:
 				right_elbow_ik.start()
+
+			# Finger IK for weapon grip
+			if right_thumb_ik:
+				right_thumb_ik.start()
+			if right_index_ik:
+				right_index_ik.start()
+			if right_middle_ik:
+				right_middle_ik.start()
 
 			# Left arm IK only when aiming
 			if weapon_state == WeaponState.AIMING:
