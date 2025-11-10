@@ -1995,22 +1995,9 @@ func _update_weapon_ik_targets():
 
 		right_hand_target.global_position = target_pos
 
-		# Set hand rotation to grip weapon properly
-		# For right-handed pistol grip: thumb up, palm faces left (inward), back of hand faces right
-		var camera_forward = -active_camera.global_transform.basis.z
-		var camera_right = active_camera.global_transform.basis.x
-		var camera_up = active_camera.global_transform.basis.y
-
-		# Pistol grip orientation for right hand:
-		# - Thumb points UP (Y axis)
-		# - Palm faces INWARD/LEFT (toward body center)
-		# - Back of hand faces OUTWARD/RIGHT
-		var grip_right = camera_up  # X axis: thumb points up
-		var grip_up = camera_right  # Y axis: back of hand points right (outward)
-		var grip_forward = -camera_right  # Z axis: palm faces left (inward toward body)
-
-		var grip_basis = Basis(grip_right, grip_up, grip_forward)
-		right_hand_target.global_transform.basis = grip_basis
+		# Don't set hand rotation - let IK solve naturally
+		# The weapon positioning via _update_weapon_to_hand() handles grip alignment
+		# Setting rotation here causes instability and conflicts with IK solving
 
 	# Update left hand IK target ONLY for two-handed weapons (rifles)
 	var left_hand_target = ik_targets_node.get_node_or_null("LeftHandTarget")
