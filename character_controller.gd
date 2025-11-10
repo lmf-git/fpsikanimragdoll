@@ -60,8 +60,10 @@ var is_running: bool = false
 
 # IK System
 @export var ik_enabled: bool = true
-# Arm IK chains - separate chains for elbow, wrist, and hand control
-@export var left_elbow_ik: SkeletonIK3D  # Shoulder -> Lower_Arm (controls elbow position)
+# Arm IK chains - three chains per arm for full control
+@export var left_upper_arm_ik: SkeletonIK3D  # Shoulder -> Upper_Arm (controls shoulder/upper arm)
+@export var right_upper_arm_ik: SkeletonIK3D
+@export var left_elbow_ik: SkeletonIK3D  # Upper_Arm -> Lower_Arm (controls elbow position)
 @export var right_elbow_ik: SkeletonIK3D
 @export var left_wrist_ik: SkeletonIK3D  # Lower_Arm -> Hand (controls wrist/hand position)
 @export var right_wrist_ik: SkeletonIK3D
@@ -400,21 +402,38 @@ func _create_ik_system():
 		left_wrist_ik.set_target_node(left_hand_final_target.get_path())
 		print("Created LeftWristIK (Lower_Arm -> Hand)")
 
-	# Create RIGHT ARM IK chains
-	# Chain 1: Shoulder -> Lower_Arm (controls elbow position)
+	# Create RIGHT ARM IK chains - three separate chains for full control
+	# Chain 1: Shoulder -> Upper_Arm (controls shoulder/upper arm orientation)
+	var right_upper_arm_target = ik_targets_node.get_node_or_null("RightUpperArmTarget")
+	if not right_upper_arm_target:
+		right_upper_arm_target = Area3D.new()
+		right_upper_arm_target.name = "RightUpperArmTarget"
+		ik_targets_node.add_child(right_upper_arm_target)
+		print("Created RightUpperArmTarget")
+
+	var right_upper_arm_ik = SkeletonIK3D.new()
+	right_upper_arm_ik.name = "RightUpperArmIK"
+	right_upper_arm_ik.root_bone = "characters3d.com___R_Shoulder"
+	right_upper_arm_ik.tip_bone = "characters3d.com___R_Upper_Arm"
+	right_upper_arm_ik.interpolation = 1.0
+	right_upper_arm_ik.max_iterations = 20
+	skeleton.add_child(right_upper_arm_ik)
+	right_upper_arm_ik.set_target_node(right_upper_arm_target.get_path())
+	print("Created RightUpperArmIK (Shoulder -> Upper_Arm)")
+
+	# Chain 2: Upper_Arm -> Lower_Arm (controls elbow position)
 	if right_elbow_target:
 		right_elbow_ik = SkeletonIK3D.new()
 		right_elbow_ik.name = "RightElbowIK"
-		right_elbow_ik.root_bone = "characters3d.com___R_Shoulder"
+		right_elbow_ik.root_bone = "characters3d.com___R_Upper_Arm"
 		right_elbow_ik.tip_bone = "characters3d.com___R_Lower_Arm"
 		right_elbow_ik.interpolation = 1.0
 		right_elbow_ik.max_iterations = 20
 		skeleton.add_child(right_elbow_ik)
 		right_elbow_ik.set_target_node(right_elbow_target.get_path())
-		print("Created RightElbowIK (Shoulder -> Lower_Arm)")
+		print("Created RightElbowIK (Upper_Arm -> Lower_Arm)")
 
-	# Chain 2: Lower_Arm -> Hand (controls wrist/hand position)
-	# Use hand_target because this chain ends at the Hand bone
+	# Chain 3: Lower_Arm -> Hand (controls wrist/hand position and rotation)
 	var right_hand_final_target = right_hand_target
 	if right_hand_final_target:
 		right_wrist_ik = SkeletonIK3D.new()
@@ -2004,11 +2023,19 @@ func _update_weapon_ik_targets():
 		right_hand_target.global_position = target_pos
 
 		# Set hand target rotation for proper pistol grip
-		# Start with camera basis, then rotate for grip orientation
-		# Pistol grip: palm faces down/inward, thumb up, fingers wrap around grip
-		var grip_rotation = Basis()
-		grip_rotation = grip_rotation.rotated(Vector3.RIGHT, deg_to_rad(-90))  # Rotate hand down 90° for pistol grip
-		var hand_basis = camera_basis * grip_rotation
+		# For right hand pistol grip, rotate hand so palm faces inward
+		# Build custom basis: thumb up, palm faces left, back of hand faces right
+		var camera_forward = -camera_basis.z
+		var camera_right = camera_basis.x
+		var camera_up = camera_basis.y
+
+		# Create grip orientation:
+		# X = thumb (up), Y = back of hand (forward), Z = palm normal (left/inward)
+		var hand_right = camera_up  # Thumb points up
+		var hand_up = camera_forward  # Back of hand faces forward
+		var hand_forward = -camera_right  # Palm faces left/inward
+
+		var hand_basis = Basis(hand_right, hand_up, hand_forward)
 		right_hand_target.global_transform.basis = hand_basis
 
 	# Update left hand IK target ONLY for two-handed weapons (rifles)
@@ -2061,35 +2088,41 @@ func _update_weapon_ik_targets():
 					var left_hand_rest = skeleton.global_transform * skeleton.get_bone_rest(l_hand_id).origin
 					left_hand_target.global_position = left_hand_rest
 
-	# Update elbow and wrist IK targets for proper arm positioning
+	# Update arm IK targets for proper arm positioning
+	var left_upper_arm_target = ik_targets_node.get_node_or_null("LeftUpperArmTarget")
+	var right_upper_arm_target = ik_targets_node.get_node_or_null("RightUpperArmTarget")
 	var left_elbow_target = ik_targets_node.get_node_or_null("LeftElbowTarget")
 	var right_elbow_target = ik_targets_node.get_node_or_null("RightElbowTarget")
 	var left_wrist_target = ik_targets_node.get_node_or_null("LeftWristTarget")
 	var right_wrist_target = ik_targets_node.get_node_or_null("RightWristTarget")
 
-	# RIGHT ARM: Position elbow target to create proper arm bend
-	# The wrist IK now uses hand_target, so we only need to position elbow correctly
-	if right_hand_target and right_elbow_target and right_wrist_target:
+	# RIGHT ARM: Position upper arm, elbow, and hand targets
+	if right_hand_target and right_upper_arm_target and right_elbow_target and right_wrist_target:
 		# Calculate direction from chest to hand target (aim direction)
 		var chest_to_hand = right_hand_target.global_position - anchor_transform.origin
 		var aim_direction = chest_to_hand.normalized()
 
-		# Create perpendicular vectors for elbow positioning
+		# Create perpendicular vectors for positioning
 		var up_ref = Vector3.UP
 		if abs(aim_direction.dot(Vector3.UP)) > 0.9:
 			up_ref = Vector3.RIGHT
 		var aim_right = aim_direction.cross(up_ref).normalized()
 		var aim_down = aim_right.cross(aim_direction).normalized()
 
-		# Position elbow along the line from chest to hand
-		# Elbow should be closer to chest (35% to hand) so it's well behind the hand target
-		var elbow_pos = anchor_transform.origin + chest_to_hand * 0.35
+		# Position upper arm target (between shoulder and elbow)
+		# This controls shoulder rotation and upper arm direction
+		var upper_arm_pos = anchor_transform.origin + chest_to_hand * 0.2  # 20% toward hand
+		upper_arm_pos += aim_right * 0.15  # Slight outward offset
+		upper_arm_pos += aim_down * 0.05   # Slight downward offset
+		right_upper_arm_target.global_position = upper_arm_pos
+
+		# Position elbow target (between upper arm and hand)
+		# Elbow at 50% between shoulder and hand
+		var elbow_pos = anchor_transform.origin + chest_to_hand * 0.5
 
 		# Offset to the right and down for natural arm bend
-		# Increased right offset for proper shooting stance
 		elbow_pos += aim_right * 0.4    # Further outward for weapon holding
 		elbow_pos += aim_down * 0.15    # Slightly more downward offset
-
 		right_elbow_target.global_position = elbow_pos
 
 		# Wrist target is just for visualization now (wrist IK uses hand_target)
@@ -2180,12 +2213,14 @@ func _process(_delta):
 
 		# Arm IK depends on weapon equipped state
 		if equipped_weapon:
-			# Weapon equipped - always use right arm IK to hold weapon
-			# Apply wrist IK BEFORE elbow IK for better hand positioning
+			# Weapon equipped - use full right arm IK chain (3 chains)
+			# Apply from hand to shoulder for proper solving order
 			if right_wrist_ik:
 				right_wrist_ik.start()
 			if right_elbow_ik:
 				right_elbow_ik.start()
+			if right_upper_arm_ik:
+				right_upper_arm_ik.start()
 
 			# Finger IK disabled - creates circular dependency with weapon positioning
 			# Hand rotation alone provides proper grip orientation
@@ -2212,10 +2247,14 @@ func _process(_delta):
 					left_wrist_ik.stop()
 		else:
 			# No weapon - use default animation for arms
+			if left_upper_arm_ik:
+				left_upper_arm_ik.stop()
 			if left_elbow_ik:
 				left_elbow_ik.stop()
 			if left_wrist_ik:
 				left_wrist_ik.stop()
+			if right_upper_arm_ik:
+				right_upper_arm_ik.stop()
 			if right_elbow_ik:
 				right_elbow_ik.stop()
 			if right_wrist_ik:
@@ -2231,11 +2270,13 @@ func _process(_delta):
 		# IK disabled - but keep arm IK active if weapon equipped
 		if equipped_weapon:
 			# Keep right arm IK active to hold weapon
-			# Apply wrist IK BEFORE elbow IK
+			# Apply from hand to shoulder for proper chain solving
 			if right_wrist_ik:
 				right_wrist_ik.start()
 			if right_elbow_ik:
 				right_elbow_ik.start()
+			if right_upper_arm_ik:
+				right_upper_arm_ik.start()
 
 			# Finger IK disabled - creates circular dependency with weapon positioning
 			# Hand rotation alone provides proper grip orientation
