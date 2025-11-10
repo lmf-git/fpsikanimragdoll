@@ -299,7 +299,7 @@ func _update_crosshair():
 	if not camera:
 		return
 
-	# If weapon has a muzzle point, raycast from there to find where it's aiming
+	# Raycast from GUN BARREL MUZZLE POINT to find where it's aiming
 	var aim_point_3d: Vector3
 	if equipped_weapon.muzzle_point:
 		# Raycast from muzzle in the direction the barrel is pointing
@@ -309,7 +309,16 @@ func _update_crosshair():
 		# Perform raycast to find hit point
 		var space_state = get_world_3d().direct_space_state
 		var query = PhysicsRayQueryParameters3D.create(muzzle_pos, muzzle_pos + muzzle_forward * 100.0)
-		query.exclude = [self, equipped_weapon]
+
+		# Build exclusion list: character, weapon, IK targets, and ragdoll bones
+		var exclusions = [self, equipped_weapon]
+		var ik_targets_node = get_node_or_null("IKTargets")
+		if ik_targets_node:
+			for child in ik_targets_node.get_children():
+				exclusions.append(child)
+
+		query.exclude = exclusions
+		query.collide_with_areas = false  # Don't hit IK targets
 		query.collide_with_bodies = true
 		var result = space_state.intersect_ray(query)
 
@@ -1441,19 +1450,22 @@ func _find_parent_character(node: Node) -> Node:
 	return null
 
 func _trigger_muzzle_flash():
-	"""Create and trigger muzzle flash effect at weapon muzzle"""
+	"""Create and trigger muzzle flash and smoke effect at weapon muzzle"""
 	if not equipped_weapon:
 		return
 
-	# Get flash position - use muzzle_point if available
-	var flash_position = equipped_weapon.global_position
-	if equipped_weapon.muzzle_point:
-		flash_position = equipped_weapon.muzzle_point.global_position
+	# Get muzzle position and direction from gun barrel
+	var muzzle_position = equipped_weapon.global_position
+	var muzzle_forward = -equipped_weapon.global_transform.basis.z
 
-	# Create bright muzzle flash light
+	if equipped_weapon.muzzle_point:
+		muzzle_position = equipped_weapon.muzzle_point.global_position
+		muzzle_forward = -equipped_weapon.muzzle_point.global_transform.basis.z
+
+	# 1. CREATE BRIGHT MUZZLE FLASH
 	var flash = OmniLight3D.new()
 	get_tree().root.add_child(flash)
-	flash.global_position = flash_position
+	flash.global_position = muzzle_position
 	flash.light_color = Color(1.0, 0.9, 0.6)
 	flash.light_energy = 50.0  # Very bright
 	flash.omni_range = 5.0
@@ -1464,7 +1476,63 @@ func _trigger_muzzle_flash():
 	flash_tween.tween_property(flash, "light_energy", 0.0, 0.05)
 	flash_tween.tween_callback(flash.queue_free)
 
-	print("Muzzle flash at ", flash_position)
+	# 2. CREATE MUZZLE SMOKE from gun barrel
+	var smoke = GPUParticles3D.new()
+	get_tree().root.add_child(smoke)
+	smoke.global_position = muzzle_position
+
+	# Orient smoke to shoot forward from barrel
+	if equipped_weapon.muzzle_point:
+		smoke.global_rotation = equipped_weapon.muzzle_point.global_rotation
+	else:
+		smoke.global_rotation = equipped_weapon.global_rotation
+
+	# Particle settings - small smoke puff from barrel
+	smoke.emitting = true
+	smoke.one_shot = true
+	smoke.explosiveness = 0.7  # Quick burst
+	smoke.amount = 12  # Small amount
+	smoke.lifetime = 1.0  # Short lifetime
+	smoke.speed_scale = 1.0
+
+	# Create particle material
+	var smoke_material = ParticleProcessMaterial.new()
+	smoke_material.direction = Vector3(0, 0, -1)  # Forward in local space (from barrel)
+	smoke_material.spread = 8.0  # Tight cone
+	smoke_material.initial_velocity_min = 2.0
+	smoke_material.initial_velocity_max = 4.0
+	smoke_material.gravity = Vector3(0, 0.2, 0)  # Slight upward drift
+	smoke_material.damping_min = 1.5
+	smoke_material.damping_max = 2.0
+	smoke_material.scale_min = 0.08
+	smoke_material.scale_max = 0.12
+	smoke_material.scale_curve = _create_muzzle_smoke_scale_curve()
+	smoke_material.color = Color(0.3, 0.3, 0.35, 0.6)  # Gray-blue gunpowder smoke
+	smoke_material.color_ramp = _create_muzzle_smoke_fade_gradient()
+
+	smoke.process_material = smoke_material
+	smoke.draw_pass_1 = _create_smoke_mesh()
+
+	# Auto-cleanup
+	var cleanup_timer = get_tree().create_timer(1.5)
+	cleanup_timer.timeout.connect(func(): smoke.queue_free())
+
+	print("Muzzle flash and smoke at ", muzzle_position)
+
+func _create_muzzle_smoke_scale_curve() -> Curve:
+	"""Create curve for muzzle smoke particles to grow over time"""
+	var curve = Curve.new()
+	curve.add_point(Vector2(0.0, 0.2))  # Start small
+	curve.add_point(Vector2(0.5, 1.0))  # Grow to full size
+	curve.add_point(Vector2(1.0, 1.3))  # Continue expanding
+	return curve
+
+func _create_muzzle_smoke_fade_gradient() -> Gradient:
+	"""Create gradient for muzzle smoke to fade out over time"""
+	var gradient = Gradient.new()
+	gradient.set_color(0, Color(0.4, 0.4, 0.45, 0.7))  # Start visible gray-blue
+	gradient.set_color(1, Color(0.3, 0.3, 0.3, 0.0))  # Fade to transparent
+	return gradient
 
 func _create_impact_smoke_scale_curve() -> Curve:
 	"""Create curve for impact smoke/dust particles to grow over time"""
