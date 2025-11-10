@@ -2134,54 +2134,27 @@ func _update_weapon_ik_targets():
 				left_wrist_target.global_position = left_wrist_rest
 
 func _update_weapon_to_hand():
-	"""Update weapon orientation to match camera aim (called AFTER IK is applied)"""
+	"""Set weapon local position for grip alignment - rotation follows hand bone naturally"""
 	if not equipped_weapon:
 		return
 
-	# Get camera for aim direction
-	var active_camera = fps_camera if camera_mode == 0 else tps_camera
-	if not active_camera:
-		return
-
-	# The weapon is parented to hand bone via BoneAttachment3D, so it follows the hand automatically
-	# We only need to set the local rotation to point forward along camera aim
+	# The weapon is parented to hand bone via BoneAttachment3D
+	# It naturally follows the hand bone's rotation from IK
+	# We only need to set the local position so grip aligns with hand bone origin
 	if equipped_weapon.main_grip:
-		# Get parent transform (hand bone)
-		var parent = equipped_weapon.get_parent()
-		if not parent:
-			return
-
-		# Get camera aim direction in global space
-		var camera_forward = -active_camera.global_transform.basis.z
-		var camera_right = active_camera.global_transform.basis.x
-		var camera_up = active_camera.global_transform.basis.y
-
-		# Build weapon basis in global space
-		var weapon_global_basis = Basis(camera_right, camera_up, -camera_forward)
-
-		# Convert to local space relative to parent
-		var parent_global_basis = parent.global_transform.basis
-		var weapon_local_basis = parent_global_basis.inverse() * weapon_global_basis
-
-		# Smooth rotation interpolation to prevent spinning
-		var current_quat = Quaternion(equipped_weapon.transform.basis)
-		var target_quat = Quaternion(weapon_local_basis)
-		var smoothed_quat = current_quat.slerp(target_quat, 0.3)  # 30% interpolation per frame
-		var smoothed_basis = Basis(smoothed_quat)
-
-		# Set smoothed local rotation
-		equipped_weapon.transform.basis = smoothed_basis
-
 		# Set local position so grip aligns with hand bone origin
+		# Weapon's natural rotation from hand bone is preserved
 		var grip_local_pos = equipped_weapon.main_grip.position
-		var grip_offset = smoothed_basis * grip_local_pos
-		equipped_weapon.transform.origin = -grip_offset
+
+		# No rotation override - weapon follows hand bone rotation from IK
+		# Just offset position so grip point is at hand origin
+		equipped_weapon.transform.origin = -grip_local_pos
 
 func _process(_delta):
 	# WEAPON UPDATE ORDER - CRITICAL for proper IK-based positioning:
 	# 1. Set IK targets (where hands should go based on weapon state/aiming)
 	# 2. Apply IK (moves bones to targets)
-	# 3. Override weapon orientation to match camera aim (prevents gun rotating opposite to arms)
+	# 3. Update weapon grip position (rotation follows hand bone naturally)
 
 	# STEP 1: Set IK targets for weapon holding
 	if equipped_weapon:
