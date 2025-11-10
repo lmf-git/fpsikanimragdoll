@@ -1369,12 +1369,19 @@ func _shoot_weapon():
 	if not equipped_weapon:
 		return
 
-	# Get shoot direction from camera
+	# Get camera for spread reference
 	var camera = fps_camera if camera_mode == 0 else tps_camera
 	if not camera:
 		return
 
-	var shoot_direction = -camera.global_transform.basis.z  # Forward direction
+	# Shoot from barrel (muzzle point) if available, otherwise weapon position
+	var shoot_from = equipped_weapon.global_position
+	var shoot_direction = -camera.global_transform.basis.z  # Default to camera direction
+
+	if equipped_weapon.muzzle_point:
+		# Shoot from barrel position in barrel direction
+		shoot_from = equipped_weapon.muzzle_point.global_position
+		shoot_direction = -equipped_weapon.muzzle_point.global_transform.basis.z
 
 	# Apply weapon spread based on weapon state
 	var spread_angle = 0.0
@@ -1388,13 +1395,15 @@ func _shoot_weapon():
 	var spread_y = randf_range(-spread_angle, spread_angle)
 
 	# Apply spread by rotating the shoot direction
+	# Use barrel's basis for spread reference if available
 	var spread_basis = Basis()
-	spread_basis = spread_basis.rotated(camera.global_transform.basis.x, spread_y)  # Pitch
-	spread_basis = spread_basis.rotated(camera.global_transform.basis.y, spread_x)  # Yaw
+	if equipped_weapon.muzzle_point:
+		spread_basis = spread_basis.rotated(equipped_weapon.muzzle_point.global_transform.basis.x, spread_y)  # Pitch
+		spread_basis = spread_basis.rotated(equipped_weapon.muzzle_point.global_transform.basis.y, spread_x)  # Yaw
+	else:
+		spread_basis = spread_basis.rotated(camera.global_transform.basis.x, spread_y)  # Pitch
+		spread_basis = spread_basis.rotated(camera.global_transform.basis.y, spread_x)  # Yaw
 	shoot_direction = spread_basis * shoot_direction
-
-	# Shoot from camera position
-	var shoot_from = camera.global_position
 
 	# Call weapon shoot function
 	var hit_result = equipped_weapon.shoot(shoot_from, shoot_direction)
@@ -1436,10 +1445,12 @@ func _trigger_muzzle_flash():
 	if not equipped_weapon:
 		return
 
-	# Get flash position - use muzzle_point if available, otherwise weapon position
+	# Get flash position and direction - use muzzle_point if available
 	var flash_position = equipped_weapon.global_position
+	var muzzle_forward = Vector3.FORWARD
 	if equipped_weapon.muzzle_point:
 		flash_position = equipped_weapon.muzzle_point.global_position
+		muzzle_forward = -equipped_weapon.muzzle_point.global_transform.basis.z
 
 	# Create bright muzzle flash light
 	var flash = OmniLight3D.new()
@@ -1455,7 +1466,76 @@ func _trigger_muzzle_flash():
 	flash_tween.tween_property(flash, "light_energy", 0.0, 0.05)
 	flash_tween.tween_callback(flash.queue_free)
 
-	print("Muzzle flash at ", flash_position)
+	# Create muzzle smoke particles
+	var smoke = GPUParticles3D.new()
+	get_tree().root.add_child(smoke)
+	smoke.global_position = flash_position
+
+	# Align smoke to shoot forward from barrel
+	smoke.global_rotation = equipped_weapon.muzzle_point.global_rotation if equipped_weapon.muzzle_point else equipped_weapon.global_rotation
+
+	# Particle settings
+	smoke.emitting = true
+	smoke.one_shot = true
+	smoke.explosiveness = 0.8  # Quick burst
+	smoke.amount = 20
+	smoke.lifetime = 1.5
+	smoke.speed_scale = 1.0
+
+	# Create particle process material
+	var smoke_material = ParticleProcessMaterial.new()
+	smoke_material.direction = Vector3(0, 0, -1)  # Forward in local space
+	smoke_material.spread = 15.0  # Slight cone spread
+	smoke_material.initial_velocity_min = 3.0
+	smoke_material.initial_velocity_max = 5.0
+	smoke_material.gravity = Vector3(0, 0.5, 0)  # Smoke rises slowly
+	smoke_material.damping_min = 1.0
+	smoke_material.damping_max = 2.0
+	smoke_material.scale_min = 0.1
+	smoke_material.scale_max = 0.15
+	smoke_material.scale_curve = _create_smoke_scale_curve()
+	smoke_material.color = Color(0.3, 0.3, 0.3, 0.6)  # Gray smoke
+	smoke_material.color_ramp = _create_smoke_fade_gradient()
+
+	smoke.process_material = smoke_material
+	smoke.draw_pass_1 = _create_smoke_mesh()
+
+	# Auto-cleanup after particles finish
+	var cleanup_timer = get_tree().create_timer(2.0)
+	cleanup_timer.timeout.connect(func(): smoke.queue_free())
+
+	print("Muzzle flash and smoke at ", flash_position)
+
+func _create_smoke_scale_curve() -> Curve:
+	"""Create curve for smoke particles to grow over time"""
+	var curve = Curve.new()
+	curve.add_point(Vector2(0.0, 0.2))  # Start small
+	curve.add_point(Vector2(0.5, 1.0))  # Grow to full size
+	curve.add_point(Vector2(1.0, 1.5))  # Continue expanding
+	return curve
+
+func _create_smoke_fade_gradient() -> Gradient:
+	"""Create gradient for smoke to fade out over time"""
+	var gradient = Gradient.new()
+	gradient.set_color(0, Color(0.4, 0.4, 0.4, 0.8))  # Start visible
+	gradient.set_color(1, Color(0.3, 0.3, 0.3, 0.0))  # Fade to transparent
+	return gradient
+
+func _create_smoke_mesh() -> QuadMesh:
+	"""Create simple quad mesh for smoke particles"""
+	var mesh = QuadMesh.new()
+	mesh.size = Vector2(0.3, 0.3)
+
+	# Create material for smoke particles
+	var material = StandardMaterial3D.new()
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	material.albedo_color = Color(0.5, 0.5, 0.5, 0.6)
+	material.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	mesh.material = material
+
+	return mesh
 
 func _play_gunshot_sound():
 	"""Play simple gunshot sound"""
@@ -1548,8 +1628,8 @@ func _create_impact_effect(impact_pos: Vector3, normal: Vector3):
 		up_vector = Vector3.RIGHT
 	decal.look_at(impact_pos + normal * 2.0, up_vector)
 
-	# Decal size and properties
-	decal.size = Vector3(0.2, 0.2, 0.5)  # Width, height, depth
+	# Decal size and properties - smaller for realistic bullet holes
+	decal.size = Vector3(0.08, 0.08, 0.3)  # Width, height, depth
 	decal.cull_mask = 0xFFFFF  # Render on all layers
 
 	# Create bullet hole texture procedurally
@@ -1837,64 +1917,68 @@ func _update_weapon_ik_targets():
 	var left_wrist_target = ik_targets_node.get_node_or_null("LeftWristTarget")
 	var right_wrist_target = ik_targets_node.get_node_or_null("RightWristTarget")
 
-	# RIGHT ARM: Position elbow and wrist targets for natural gun holding
+	# Get anchor point (chest or character center)
+	var anchor_transform: Transform3D
+	if chest_bone_id >= 0:
+		anchor_transform = skeleton.global_transform * skeleton.get_bone_global_pose(chest_bone_id)
+	else:
+		anchor_transform = global_transform
+
+	# RIGHT ARM: Position elbow and wrist targets to follow hand target
+	# This makes the entire arm follow the aim direction
 	if right_hand_target and right_elbow_target and right_wrist_target:
+		# Calculate direction from chest to hand target
+		var chest_to_hand = right_hand_target.global_position - anchor_transform.origin
+		var hand_distance = chest_to_hand.length()
+
+		# Position elbow to create natural arm bend
+		# Elbow should be:
+		# - Partway between chest and hand (about 50% of distance)
+		# - Down from the line between chest and hand
+		# - To the right (outward from body)
+		var elbow_pos = anchor_transform.origin + chest_to_hand * 0.5  # Halfway to hand
+
+		# Add offset to create elbow bend (down and right)
 		var body_basis = Basis(Vector3.UP, body_rotation_y)
+		var elbow_bend_offset = Vector3(0.15, -0.2, 0.05)  # Right, down, slightly back
+		elbow_pos += body_basis * elbow_bend_offset
 
-		# Position right elbow - should be down and to the right of chest, slightly back
-		# This creates a natural bent arm when holding weapon
-		var anchor_transform: Transform3D
-		if chest_bone_id >= 0:
-			anchor_transform = skeleton.global_transform * skeleton.get_bone_global_pose(chest_bone_id)
-		else:
-			anchor_transform = global_transform
+		right_elbow_target.global_position = elbow_pos
 
-		# Elbow position relative to chest
-		var elbow_offset = Vector3(0.25, -0.15, 0.1)  # Right, down, slightly back from chest
-		right_elbow_target.global_position = anchor_transform.origin + body_basis * elbow_offset
-
-		# Position right wrist - halfway between elbow and hand, slightly adjusted for weapon grip
-		# The wrist should be between elbow and hand but closer to hand
-		var wrist_pos = right_elbow_target.global_position.lerp(right_hand_target.global_position, 0.65)
-		# Adjust wrist slightly outward for better weapon grip angle
-		wrist_pos += body_basis * Vector3(0.05, 0.0, 0.0)  # Slightly outward
+		# Position wrist between elbow and hand (closer to hand)
+		var wrist_pos = right_elbow_target.global_position.lerp(right_hand_target.global_position, 0.7)
 		right_wrist_target.global_position = wrist_pos
 
-	# LEFT ARM: Position elbow and wrist targets based on weapon type
+	# LEFT ARM: Position elbow and wrist targets to follow hand target
 	if left_hand_target and left_elbow_target and left_wrist_target:
-		var body_basis = Basis(Vector3.UP, body_rotation_y)
-		var anchor_transform: Transform3D
-		if chest_bone_id >= 0:
-			anchor_transform = skeleton.global_transform * skeleton.get_bone_global_pose(chest_bone_id)
-		else:
-			anchor_transform = global_transform
+		if equipped_weapon.is_two_handed or weapon_state == WeaponState.AIMING:
+			# Two-handed weapon or aiming with pistol: left hand supports weapon
+			# Position elbow and wrist to follow the left hand target (same as right arm logic)
+			var chest_to_hand = left_hand_target.global_position - anchor_transform.origin
+			var hand_distance = chest_to_hand.length()
 
-		if equipped_weapon.is_two_handed:
-			# Two-handed weapon: Left elbow should be more forward to support foregrip
-			var elbow_offset = Vector3(-0.2, -0.1, -0.15)  # Left, down, forward from chest
-			left_elbow_target.global_position = anchor_transform.origin + body_basis * elbow_offset
+			# Position elbow halfway to hand with bend offset
+			var elbow_pos = anchor_transform.origin + chest_to_hand * 0.5
 
-			# Left wrist between elbow and hand
-			var wrist_pos = left_elbow_target.global_position.lerp(left_hand_target.global_position, 0.65)
+			# Add offset to create elbow bend (down and left)
+			var body_basis = Basis(Vector3.UP, body_rotation_y)
+			var elbow_bend_offset = Vector3(-0.15, -0.2, 0.05)  # Left, down, slightly back
+			elbow_pos += body_basis * elbow_bend_offset
+
+			left_elbow_target.global_position = elbow_pos
+
+			# Position wrist between elbow and hand
+			var wrist_pos = left_elbow_target.global_position.lerp(left_hand_target.global_position, 0.7)
 			left_wrist_target.global_position = wrist_pos
 		else:
-			# Pistol: Left arm positioning depends on weapon state
-			if weapon_state == WeaponState.AIMING:
-				# When aiming with pistol, left arm comes up to support
-				var elbow_offset = Vector3(-0.25, -0.15, 0.05)  # Left, down, slightly forward
-				left_elbow_target.global_position = anchor_transform.origin + body_basis * elbow_offset
-
-				var wrist_pos = left_elbow_target.global_position.lerp(left_hand_target.global_position, 0.65)
-				left_wrist_target.global_position = wrist_pos
-			else:
-				# When not aiming, left arm stays at rest position
-				var l_elbow_id = skeleton.find_bone("characters3d.com___L_Lower_Arm")
-				var l_wrist_id = skeleton.find_bone("characters3d.com___L_Hand")
-				if l_elbow_id >= 0 and l_wrist_id >= 0:
-					var left_elbow_rest = skeleton.global_transform * skeleton.get_bone_rest(l_elbow_id).origin
-					var left_wrist_rest = skeleton.global_transform * skeleton.get_bone_rest(l_wrist_id).origin
-					left_elbow_target.global_position = left_elbow_rest
-					left_wrist_target.global_position = left_wrist_rest
+			# Pistol hip fire: left arm stays at rest position
+			var l_elbow_id = skeleton.find_bone("characters3d.com___L_Lower_Arm")
+			var l_wrist_id = skeleton.find_bone("characters3d.com___L_Hand")
+			if l_elbow_id >= 0 and l_wrist_id >= 0:
+				var left_elbow_rest = skeleton.global_transform * skeleton.get_bone_rest(l_elbow_id).origin
+				var left_wrist_rest = skeleton.global_transform * skeleton.get_bone_rest(l_wrist_id).origin
+				left_elbow_target.global_position = left_elbow_rest
+				left_wrist_target.global_position = left_wrist_rest
 
 func _update_weapon_to_hand():
 	"""Position weapon to follow IK-transformed hand bone (called AFTER IK is applied)"""
