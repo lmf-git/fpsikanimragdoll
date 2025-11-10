@@ -1416,12 +1416,36 @@ func _find_parent_character(node: Node) -> Node:
 
 func _trigger_muzzle_flash():
 	"""Create and trigger muzzle flash effect at weapon muzzle"""
-	if not equipped_weapon or not equipped_weapon.muzzle_point:
+	if not equipped_weapon:
 		return
+
+	# Get flash position - use muzzle_point if available, otherwise weapon position
+	var flash_position = equipped_weapon.global_position
+	if equipped_weapon.muzzle_point:
+		flash_position = equipped_weapon.muzzle_point.global_position
+
+	# Create bright muzzle flash light
+	var flash = OmniLight3D.new()
+	get_tree().root.add_child(flash)
+	flash.global_position = flash_position
+	flash.light_color = Color(1.0, 0.9, 0.6)
+	flash.light_energy = 50.0  # Very bright
+	flash.omni_range = 5.0
+	flash.shadow_enabled = false
+
+	# Quick flash using tween
+	var flash_tween = create_tween()
+	flash_tween.tween_property(flash, "light_energy", 0.0, 0.05)
+	flash_tween.tween_callback(flash.queue_free)
+
+	print("Muzzle flash at ", flash_position)
+
+	return  # Skip old particle code below
 
 	# Create one-shot muzzle flash particles
 	var flash_particles = CPUParticles3D.new()
-	equipped_weapon.muzzle_point.add_child(flash_particles)
+	get_tree().root.add_child(flash_particles)
+	flash_particles.global_position = flash_position
 
 	# Configure flash particles - ENHANCED FOR VISIBILITY
 	flash_particles.emitting = true
@@ -1483,41 +1507,52 @@ func _trigger_muzzle_flash():
 	muzzle_flash_timer = MUZZLE_FLASH_DURATION
 
 func _play_gunshot_sound():
-	"""Play procedurally generated gunshot sound"""
-	if not equipped_weapon or not equipped_weapon.muzzle_point:
+	"""Play simple gunshot sound"""
+	if not equipped_weapon:
 		return
 
 	# Create audio player if it doesn't exist
 	if not gunshot_audio:
 		gunshot_audio = AudioStreamPlayer3D.new()
-		gunshot_audio.max_distance = 50.0  # Audible from 50 meters
-		gunshot_audio.attenuation_model = AudioStreamPlayer3D.ATTENUATION_INVERSE_DISTANCE
-		gunshot_audio.unit_size = 5.0  # Loud sound
+		gunshot_audio.max_distance = 50.0
+		gunshot_audio.unit_size = 10.0  # Very loud
 		add_child(gunshot_audio)
 
-	# Create a procedural gunshot sound using AudioStreamGenerator
+	# Create simple gunshot using AudioStreamGenerator
 	var generator = AudioStreamGenerator.new()
-	generator.mix_rate = 44100.0
-	generator.buffer_length = 0.1  # 100ms buffer
+	generator.mix_rate = 22050.0  # Lower rate for simpler sound
+	generator.buffer_length = 0.2
 
 	gunshot_audio.stream = generator
+	gunshot_audio.global_position = equipped_weapon.global_position
 	gunshot_audio.play()
 
-	# Fill the audio buffer with gunshot-like noise
-	await get_tree().process_frame
-	var playback: AudioStreamGeneratorPlayback = gunshot_audio.get_stream_playback()
-	if playback:
-		var samples_to_fill = 4410  # 0.1 second at 44100 Hz
-		for i in range(samples_to_fill):
-			var t = float(i) / samples_to_fill
-			# Create gunshot envelope: sharp attack, quick decay
-			var envelope = exp(-t * 20.0)  # Exponential decay
-			# Mix of sine waves and noise for gunshot character
-			var low_freq = sin(t * 200.0 * TAU) * 0.5  # Low boom
-			var mid_freq = sin(t * 800.0 * TAU) * 0.3  # Mid crack
-			var noise = (randf() * 2.0 - 1.0) * 0.2  # Random noise
-			var sample = (low_freq + mid_freq + noise) * envelope * 0.5
-			playback.push_frame(Vector2(sample, sample))
+	# Fill buffer in next frame
+	_fill_gunshot_buffer.call_deferred()
+
+func _fill_gunshot_buffer():
+	"""Fill the audio buffer with gunshot sound"""
+	if not gunshot_audio:
+		return
+
+	var playback = gunshot_audio.get_stream_playback()
+	if not playback:
+		return
+
+	# Generate 0.1 second of gunshot sound
+	var samples = 2205  # 0.1s at 22050Hz
+	for i in range(samples):
+		var t = float(i) / float(samples)
+		# Exponential decay envelope
+		var env = exp(-t * 15.0)
+		# Mix low and high frequencies with noise
+		var low = sin(t * 150.0 * TAU) * 0.6
+		var high = sin(t * 1200.0 * TAU) * 0.3
+		var noise_val = (randf() * 2.0 - 1.0) * 0.3
+		var sample = (low + high + noise_val) * env * 0.8
+		playback.push_frame(Vector2(sample, sample))
+
+	print("Gunshot sound played")
 
 func _apply_recoil():
 	"""Apply recoil to camera and weapon"""
@@ -1564,92 +1599,40 @@ func _create_impact_effect(impact_pos: Vector3, normal: Vector3):
 	var decal_timer = get_tree().create_timer(30.0)  # Stay for 30 seconds
 	decal_timer.timeout.connect(func(): decal.queue_free())
 
-	# 2. CREATE SMOKE PARTICLES
-	var smoke = CPUParticles3D.new()
+	# 2. CREATE SIMPLE VISIBLE SMOKE PUFF
+	var smoke = OmniLight3D.new()
 	get_tree().root.add_child(smoke)
-	smoke.global_position = impact_pos
-	smoke.emitting = true
-	smoke.one_shot = true
-	smoke.amount = 15
-	smoke.lifetime = 2.0
-	smoke.explosiveness = 0.3
+	smoke.global_position = impact_pos + normal * 0.1
+	smoke.light_color = Color(0.6, 0.6, 0.6)  # Gray light
+	smoke.light_energy = 2.0
+	smoke.omni_range = 1.0
 
-	# Smoke properties
-	smoke.direction = normal
-	smoke.spread = 25.0
-	smoke.initial_velocity_min = 0.5
-	smoke.initial_velocity_max = 1.5
-	smoke.gravity = Vector3(0, 0.5, 0)  # Rises slowly
+	# Fade out smoke light over time
+	var smoke_tween = create_tween()
+	smoke_tween.tween_property(smoke, "light_energy", 0.0, 0.5)
+	smoke_tween.tween_callback(smoke.queue_free)
 
-	# Visual - gray smoke
-	smoke.scale_amount_min = 0.2
-	smoke.scale_amount_max = 0.5
-	smoke.scale_amount_curve = _create_smoke_scale_curve()
-	smoke.color = Color(0.3, 0.3, 0.3, 0.8)  # Gray smoke
+	# 3. CREATE BRIGHT IMPACT FLASH
+	var flash = OmniLight3D.new()
+	get_tree().root.add_child(flash)
+	flash.global_position = impact_pos + normal * 0.05
+	flash.light_color = Color(1.0, 0.9, 0.7)  # Bright yellow-white
+	flash.light_energy = 10.0
+	flash.omni_range = 2.0
 
-	# Fade out smoke
-	var smoke_gradient = Gradient.new()
-	smoke_gradient.add_point(0.0, Color(1, 1, 1, 0.6))
-	smoke_gradient.add_point(0.5, Color(1, 1, 1, 0.3))
-	smoke_gradient.add_point(1.0, Color(1, 1, 1, 0))
-	smoke.color_ramp = smoke_gradient
+	# Quick flash
+	var flash_tween = create_tween()
+	flash_tween.tween_property(flash, "light_energy", 0.0, 0.1)
+	flash_tween.tween_callback(flash.queue_free)
 
-	# Smoke material
-	var smoke_material = StandardMaterial3D.new()
-	smoke_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	smoke_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	smoke_material.albedo_color = Color(0.4, 0.4, 0.4)
-	smoke_material.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
-	smoke_material.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
-	smoke.material_override = smoke_material
-
-	# Auto-delete smoke
-	var smoke_timer = get_tree().create_timer(smoke.lifetime + 0.1)
-	smoke_timer.timeout.connect(func(): smoke.queue_free())
-
-	# 3. CREATE DEBRIS/SPARK PARTICLES
-	var debris = CPUParticles3D.new()
-	get_tree().root.add_child(debris)
-	debris.global_position = impact_pos
-	debris.emitting = true
-	debris.one_shot = true
-	debris.explosiveness = 1.0
-	debris.amount = 8
-	debris.lifetime = 0.3
-
-	# Debris properties
-	debris.direction = normal
-	debris.spread = 45.0
-	debris.initial_velocity_min = 3.0
-	debris.initial_velocity_max = 6.0
-	debris.gravity = Vector3(0, -15.0, 0)
-
-	# Visual - bright sparks
-	debris.scale_amount_min = 0.05
-	debris.scale_amount_max = 0.1
-	debris.color = Color(1.0, 0.8, 0.4, 1.0)  # Orange sparks
-
-	# Debris material
-	var debris_material = StandardMaterial3D.new()
-	debris_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	debris_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	debris_material.albedo_color = Color(1.0, 0.9, 0.5)
-	debris_material.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
-	debris_material.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
-	debris.material_override = debris_material
-
-	# Auto-delete debris
-	var debris_timer = get_tree().create_timer(debris.lifetime + 0.1)
-	debris_timer.timeout.connect(func(): debris.queue_free())
-
-	print("Created bullet hole, smoke, and debris at ", impact_pos)
+	print("Created bullet hole, smoke puff, and impact flash at ", impact_pos)
 
 func _create_bullet_hole_texture() -> ImageTexture:
 	"""Create a simple circular bullet hole texture"""
 	var size = 64
 	var image = Image.create(size, size, false, Image.FORMAT_RGBA8)
 
-	var center = Vector2(size / 2, size / 2)
+	var center = Vector2(size / 2.0, size / 2.0)
 	var radius = size / 2.5
 
 	for y in range(size):
