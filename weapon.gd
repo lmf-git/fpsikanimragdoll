@@ -44,11 +44,13 @@ func _ready():
 		freeze = false
 		gravity_scale = 1.0
 
-	# Auto-configure fire mode based on weapon type
+	# Auto-configure fire mode and rate based on weapon type
 	if weapon_type == WeaponType.RIFLE:
 		fire_mode = FireMode.FULL_AUTO  # Rifles are fully automatic
+		fire_rate = 0.08  # 750 RPM - fast automatic fire
 	elif weapon_type == WeaponType.PISTOL:
 		fire_mode = FireMode.SEMI_AUTO  # Pistols are semi-automatic
+		fire_rate = 0.15  # 400 RPM - slower semi-auto
 
 	# Ensure grip points are found (in case NodePath wasn't auto-resolved)
 	if not main_grip:
