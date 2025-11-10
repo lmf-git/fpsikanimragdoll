@@ -2089,7 +2089,6 @@ func _update_weapon_ik_targets():
 					left_hand_target.global_position = left_hand_rest
 
 	# Update arm IK targets for proper arm positioning
-	var left_upper_arm_target = ik_targets_node.get_node_or_null("LeftUpperArmTarget")
 	var right_upper_arm_target = ik_targets_node.get_node_or_null("RightUpperArmTarget")
 	var left_elbow_target = ik_targets_node.get_node_or_null("LeftElbowTarget")
 	var right_elbow_target = ik_targets_node.get_node_or_null("RightElbowTarget")
@@ -2192,9 +2191,9 @@ func _update_weapon_to_hand():
 	equipped_weapon.transform.basis = weapon_rotation
 
 	# Set local position so grip aligns with hand bone origin (if grip point exists)
-	if equipped_weapon.main_grip:
+	if equipped_weapon.main_grip and equipped_weapon.main_grip.position != null:
 		var grip_local_pos = equipped_weapon.main_grip.position
-		equipped_weapon.transform.origin = -weapon_rotation * grip_local_pos
+		equipped_weapon.transform.origin = -(weapon_rotation * grip_local_pos)
 	else:
 		# No grip point - use weapon origin
 		equipped_weapon.transform.origin = Vector3.ZERO
