@@ -1998,9 +1998,10 @@ func _update_weapon_ik_targets():
 
 		right_hand_target.global_position = target_pos
 
-		# Don't set hand rotation - let IK solve naturally
-		# The weapon positioning via _update_weapon_to_hand() handles grip alignment
-		# Setting rotation here causes instability and conflicts with IK solving
+		# Set hand target rotation to match camera direction for proper weapon grip
+		# The hand bone will rotate to match this via IK, and weapon inherits that rotation
+		# This must update every frame smoothly with camera to avoid jittering
+		right_hand_target.global_transform.basis = camera_basis
 
 	# Update left hand IK target ONLY for two-handed weapons (rifles)
 	var left_hand_target = ik_targets_node.get_node_or_null("LeftHandTarget")
