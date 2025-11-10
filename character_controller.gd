@@ -1534,15 +1534,19 @@ func _apply_recoil():
 	var random_yaw = randf_range(-1.0, 1.0)
 	current_recoil_rotation.y += random_yaw
 
-func _create_impact_effect(position: Vector3, normal: Vector3):
+func _create_impact_effect(impact_pos: Vector3, normal: Vector3):
 	"""Create particle effect at bullet impact point"""
 	# Create CPUParticles3D for impact effect
 	var particles = CPUParticles3D.new()
 	get_tree().root.add_child(particles)
-	particles.global_position = position
+	particles.global_position = impact_pos
 
 	# Orient particles away from surface
-	particles.look_at(position + normal, Vector3.UP)
+	# Check if normal is colinear with UP vector to avoid warning
+	var up_vector = Vector3.UP
+	if abs(normal.dot(Vector3.UP)) > 0.99:  # Nearly parallel
+		up_vector = Vector3.RIGHT  # Use different up vector
+	particles.look_at(impact_pos + normal, up_vector)
 
 	# Configure particles
 	particles.emitting = true
