@@ -2177,21 +2177,24 @@ func _update_weapon_ik_targets():
 				left_wrist_target.global_position = left_wrist_rest
 
 func _update_weapon_to_hand():
-	"""Set weapon local position for grip alignment - rotation follows hand bone naturally"""
+	"""Set weapon local position and rotation for proper grip alignment"""
 	if not equipped_weapon:
 		return
 
 	# The weapon is parented to hand bone via BoneAttachment3D
-	# It naturally follows the hand bone's rotation from IK
-	# We only need to set the local position so grip aligns with hand bone origin
+	# We need to rotate it so it points forward when hand is in pistol grip pose
 	if equipped_weapon.main_grip:
+		# Rotate weapon so barrel points forward when hand is in grip orientation
+		# Hand is rotated for pistol grip, so weapon needs counter-rotation
+		# Rotate -90° around local Y axis to make weapon point forward
+		var weapon_rotation = Basis()
+		weapon_rotation = weapon_rotation.rotated(Vector3.UP, deg_to_rad(-90))
+
 		# Set local position so grip aligns with hand bone origin
-		# Weapon's natural rotation from hand bone is preserved
 		var grip_local_pos = equipped_weapon.main_grip.position
 
-		# No rotation override - weapon follows hand bone rotation from IK
-		# Just offset position so grip point is at hand origin
-		equipped_weapon.transform.origin = -grip_local_pos
+		equipped_weapon.transform.basis = weapon_rotation
+		equipped_weapon.transform.origin = -weapon_rotation * grip_local_pos
 
 func _process(_delta):
 	# WEAPON UPDATE ORDER - CRITICAL for proper IK-based positioning:
