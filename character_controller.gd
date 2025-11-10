@@ -2082,39 +2082,37 @@ func _update_weapon_ik_targets():
 
 	# FINGER POSITIONING: Position finger targets around a fixed grip position
 	# Define grip position based on hand target and camera aim (independent of weapon)
-	if equipped_weapon and right_hand_target:
-		var active_camera = fps_camera if camera_mode == 0 else tps_camera
-		if active_camera:
-			var right_thumb_target = ik_targets_node.get_node_or_null("RightThumbTarget")
-			var right_index_target = ik_targets_node.get_node_or_null("RightIndexTarget")
-			var right_middle_target = ik_targets_node.get_node_or_null("RightMiddleTarget")
+	if equipped_weapon and right_hand_target and active_camera:
+		var right_thumb_target = ik_targets_node.get_node_or_null("RightThumbTarget")
+		var right_index_target = ik_targets_node.get_node_or_null("RightIndexTarget")
+		var right_middle_target = ik_targets_node.get_node_or_null("RightMiddleTarget")
 
-			# Calculate grip position from camera aim direction
-			var camera_forward = -active_camera.global_transform.basis.z
-			var camera_right = active_camera.global_transform.basis.x
-			var camera_up = active_camera.global_transform.basis.y
+		# Calculate grip position from camera aim direction
+		var camera_forward = -active_camera.global_transform.basis.z
+		var camera_right = active_camera.global_transform.basis.x
+		var camera_up = active_camera.global_transform.basis.y
 
-			# Create grip basis aligned with camera aim
-			var grip_basis = Basis(camera_right, camera_up, -camera_forward)
+		# Create grip basis aligned with camera aim
+		var grip_basis = Basis(camera_right, camera_up, -camera_forward)
 
-			# Grip position is at hand target
-			var grip_center = right_hand_target.global_position
+		# Grip position is at hand target
+		var grip_center = right_hand_target.global_position
 
-			# Position fingers around grip center with fixed offsets
-			# Thumb wraps around left side of grip
-			if right_thumb_target:
-				var thumb_offset = grip_basis * Vector3(-0.04, -0.02, 0.0)  # Left and down
-				right_thumb_target.global_position = grip_center + thumb_offset
+		# Position fingers around grip center with fixed offsets
+		# Thumb wraps around left side of grip
+		if right_thumb_target:
+			var thumb_offset = grip_basis * Vector3(-0.04, -0.02, 0.0)  # Left and down
+			right_thumb_target.global_position = grip_center + thumb_offset
 
-			# Index finger wraps around front/right of grip (trigger finger)
-			if right_index_target:
-				var index_offset = grip_basis * Vector3(0.03, -0.03, -0.02)  # Right, down, back (trigger)
-				right_index_target.global_position = grip_center + index_offset
+		# Index finger wraps around front/right of grip (trigger finger)
+		if right_index_target:
+			var index_offset = grip_basis * Vector3(0.03, -0.03, -0.02)  # Right, down, back (trigger)
+			right_index_target.global_position = grip_center + index_offset
 
-			# Middle finger wraps around right side of grip
-			if right_middle_target:
-				var middle_offset = grip_basis * Vector3(0.04, -0.04, 0.0)  # Right and down
-				right_middle_target.global_position = grip_center + middle_offset
+		# Middle finger wraps around right side of grip
+		if right_middle_target:
+			var middle_offset = grip_basis * Vector3(0.04, -0.04, 0.0)  # Right and down
+			right_middle_target.global_position = grip_center + middle_offset
 
 	# LEFT ARM: Position elbow and wrist targets to follow hand target
 	if left_hand_target and left_elbow_target and left_wrist_target:
