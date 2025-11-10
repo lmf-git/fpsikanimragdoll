@@ -1980,46 +1980,49 @@ func _update_weapon_to_hand():
 	var right_hand_transform = skeleton.global_transform * skeleton.get_bone_global_pose(right_hand_bone_id)
 	print("DEBUG: _update_weapon_to_hand() - hand transform: ", right_hand_transform.origin)
 
-	# STEP 1: Position weapon so grip point aligns with hand bone origin
-	# This must be done FIRST, before applying any rotation offsets
+	# Get camera for aim direction
+	var active_camera = fps_camera if camera_mode == 0 else tps_camera
+	if not active_camera:
+		return
+
+	# STEP 1: Orient weapon to match CAMERA AIM DIRECTION, not hand rotation
+	# This prevents the weapon from rotating opposite to arm movement
 	if equipped_weapon.main_grip:
 		# Calculate where weapon should be placed so grip aligns with hand
 		var grip_local_pos = equipped_weapon.main_grip.position
 
-		# First, match hand rotation directly (no offset yet)
-		equipped_weapon.global_transform.basis = right_hand_transform.basis
+		# Use camera's aim direction for weapon orientation
+		# This keeps the weapon pointing where you're looking
+		var camera_forward = -active_camera.global_transform.basis.z
+		var camera_right = active_camera.global_transform.basis.x
+		var camera_up = active_camera.global_transform.basis.y
 
-		# Calculate grip offset in world space
-		var grip_world_offset = equipped_weapon.global_transform.basis * grip_local_pos
+		# Build weapon basis from camera orientation
+		# Apply -90 degree pitch to point weapon forward
+		var rotation_offset = Basis()
+		rotation_offset = rotation_offset.rotated(Vector3.RIGHT, deg_to_rad(-90))  # Pitch weapon forward
+
+		# Construct weapon basis from camera (ensures weapon follows aim)
+		var weapon_basis = Basis(camera_right, camera_up, camera_forward) * rotation_offset
+		equipped_weapon.global_transform.basis = weapon_basis
 
 		# Position weapon so grip point is at hand bone origin
+		var grip_world_offset = equipped_weapon.global_transform.basis * grip_local_pos
 		equipped_weapon.global_position = right_hand_transform.origin - grip_world_offset
 
-		# STEP 2: Apply weapon-specific rotation offset AFTER positioning
-		# This rotates the weapon around the grip point (hand bone origin)
-		# Adjust these values to orient the weapon correctly in hand
-		var rotation_offset = Basis()
-		rotation_offset = rotation_offset.rotated(Vector3.RIGHT, deg_to_rad(-90))  # Pitch
-		# Add more rotations here if needed:
-		# rotation_offset = rotation_offset.rotated(Vector3.UP, deg_to_rad(X))     # Yaw
-		# rotation_offset = rotation_offset.rotated(Vector3.FORWARD, deg_to_rad(X)) # Roll
-
-		equipped_weapon.global_transform.basis = right_hand_transform.basis * rotation_offset
-
-		# Recalculate position after rotation (rotation happens around grip point)
-		grip_world_offset = equipped_weapon.global_transform.basis * grip_local_pos
-		equipped_weapon.global_position = right_hand_transform.origin - grip_world_offset
 		print("DEBUG: Set weapon position to: ", equipped_weapon.global_position)
 	else:
-		# Fallback: if no grip point, just match hand transform
-		equipped_weapon.global_transform = right_hand_transform
-		print("DEBUG: No main_grip, set weapon transform to hand transform")
+		# Fallback: if no grip point, point weapon at camera aim direction
+		var camera_forward = -active_camera.global_transform.basis.z
+		equipped_weapon.global_position = right_hand_transform.origin
+		equipped_weapon.look_at(right_hand_transform.origin + camera_forward * 10.0, Vector3.UP)
+		print("DEBUG: No main_grip, oriented weapon to camera aim")
 
 func _process(_delta):
 	# WEAPON UPDATE ORDER - CRITICAL for proper IK-based positioning:
 	# 1. Set IK targets (where hands should go based on weapon state/aiming)
 	# 2. Apply IK (moves bones to targets)
-	# 3. Weapon automatically follows hand bone (no manual update needed - it's parented to BoneAttachment3D)
+	# 3. Override weapon orientation to match camera aim (prevents gun rotating opposite to arms)
 
 	# STEP 1: Set IK targets for weapon holding
 	if equipped_weapon:
@@ -2105,5 +2108,7 @@ func _process(_delta):
 			if right_foot_ik:
 				right_foot_ik.stop()
 
-	# STEP 3: Weapon automatically follows hand bone (parented to BoneAttachment3D)
-	# No manual update needed!
+	# STEP 3: Override weapon orientation to match camera aim direction
+	# This prevents gun from rotating opposite to arm movement
+	if equipped_weapon:
+		_update_weapon_to_hand()

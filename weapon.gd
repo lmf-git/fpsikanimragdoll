@@ -84,8 +84,27 @@ func shoot(from_position: Vector3, direction: Vector3) -> Dictionary:
 	# Perform raycast
 	var space_state = get_world_3d().direct_space_state
 	var query = PhysicsRayQueryParameters3D.create(ray_origin, ray_origin + direction * max_range)
-	query.exclude = [holder] if holder else []  # Don't hit the holder
-	query.collide_with_areas = true
+
+	# Build exclusion list: holder, weapon, and all IK targets
+	var exclusions = [self]  # Exclude the weapon itself
+	if holder:
+		exclusions.append(holder)  # Exclude the character
+
+		# Exclude all IK target nodes (they're on collision layer 16)
+		var ik_targets = holder.get_node_or_null("IKTargets")
+		if ik_targets:
+			for child in ik_targets.get_children():
+				exclusions.append(child)
+
+		# Exclude all physical bones (ragdoll bones) of the holder
+		var skeleton = holder.get_node_or_null("Model/Skeleton3D")
+		if skeleton:
+			for child in skeleton.get_children():
+				if child is PhysicalBone3D:
+					exclusions.append(child)
+
+	query.exclude = exclusions
+	query.collide_with_areas = false  # Don't hit IK targets even if not excluded
 	query.collide_with_bodies = true
 
 	var result = space_state.intersect_ray(query)
