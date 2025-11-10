@@ -106,7 +106,7 @@ var sway_time: float = 0.0  # Time accumulator for sway
 var current_sway: Vector3 = Vector3.ZERO  # Current sway offset
 
 # Weapon recoil
-@export var recoil_rotation: Vector3 = Vector3(-5.0, 0.0, 0.0)  # Rotation recoil in degrees (pitch, yaw, roll)
+@export var recoil_rotation: Vector3 = Vector3(5.0, 0.0, 0.0)  # Rotation recoil in degrees (pitch up, yaw, roll)
 @export var recoil_position: Vector3 = Vector3(0.0, 0.0, 0.05)  # Position recoil (backward push)
 @export var recoil_recovery_speed: float = 10.0  # How fast recoil returns to normal
 var current_recoil_rotation: Vector3 = Vector3.ZERO  # Current recoil rotation offset
@@ -411,7 +411,7 @@ func _create_ik_system():
 		ik_targets_node.add_child(right_upper_arm_target)
 		print("Created RightUpperArmTarget")
 
-	var right_upper_arm_ik = SkeletonIK3D.new()
+	right_upper_arm_ik = SkeletonIK3D.new()
 	right_upper_arm_ik.name = "RightUpperArmIK"
 	right_upper_arm_ik.root_bone = "characters3d.com___R_Shoulder"
 	right_upper_arm_ik.tip_bone = "characters3d.com___R_Upper_Arm"
@@ -2183,18 +2183,21 @@ func _update_weapon_to_hand():
 
 	# The weapon is parented to hand bone via BoneAttachment3D
 	# We need to rotate it so it points forward when hand is in pistol grip pose
+
+	# Rotate weapon so barrel points forward when hand is in grip orientation
+	# Hand is rotated for pistol grip, so weapon needs counter-rotation
+	# Rotate -90° around local Y axis to make weapon point forward
+	var weapon_rotation = Basis()
+	weapon_rotation = weapon_rotation.rotated(Vector3.UP, deg_to_rad(-90))
+	equipped_weapon.transform.basis = weapon_rotation
+
+	# Set local position so grip aligns with hand bone origin (if grip point exists)
 	if equipped_weapon.main_grip:
-		# Rotate weapon so barrel points forward when hand is in grip orientation
-		# Hand is rotated for pistol grip, so weapon needs counter-rotation
-		# Rotate -90° around local Y axis to make weapon point forward
-		var weapon_rotation = Basis()
-		weapon_rotation = weapon_rotation.rotated(Vector3.UP, deg_to_rad(-90))
-
-		# Set local position so grip aligns with hand bone origin
 		var grip_local_pos = equipped_weapon.main_grip.position
-
-		equipped_weapon.transform.basis = weapon_rotation
 		equipped_weapon.transform.origin = -weapon_rotation * grip_local_pos
+	else:
+		# No grip point - use weapon origin
+		equipped_weapon.transform.origin = Vector3.ZERO
 
 func _process(_delta):
 	# WEAPON UPDATE ORDER - CRITICAL for proper IK-based positioning:
