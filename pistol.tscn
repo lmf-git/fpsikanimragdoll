@@ -32,13 +32,13 @@ script = ExtResource("1")
 weapon_type = 0
 weapon_name = "Pistol"
 is_two_handed = false
-main_grip = NodePath("VisualRoot/MainGrip")
+main_grip = NodePath("MainGrip")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
 shape = SubResource("BoxShape3D_pistol")
 
 [node name="VisualRoot" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, -1, 0, 0, 0, -1, 0, 0, 0)
+transform = Transform3D(-1, 0, 0, 0, -1, 0, 0, 0, 1, 0, 0, 0)
 
 [node name="Slide" type="MeshInstance3D" parent="VisualRoot"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, -0.015)
@@ -65,5 +65,5 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.02, 0.015)
 mesh = SubResource("BoxMesh_trigger")
 surface_material_override/0 = SubResource("Material_pistol")
 
-[node name="MainGrip" type="Node3D" parent="VisualRoot"]
+[node name="MainGrip" type="Node3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.04, 0.04)
