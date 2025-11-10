@@ -82,8 +82,8 @@ var weapon_state: WeaponState = WeaponState.READY
 var is_weapon_sheathed: bool = false  # Toggle for sheathed state
 
 # Weapon positioning - skeleton-relative offsets
-@export var aim_weapon_offset: Vector3 = Vector3(0.15, 0.35, -1.3)  # Offset when aiming down sights (higher and more forward, further to the right)
-@export var ready_weapon_offset: Vector3 = Vector3(0.25, 0.1, -1.2)  # Offset when ready/moving (higher and more forward, spaced outward)
+@export var aim_weapon_offset: Vector3 = Vector3(0.15, 0.35, -1.5)  # Offset when aiming down sights (further forward so hands don't rotate inwards)
+@export var ready_weapon_offset: Vector3 = Vector3(0.25, 0.1, -1.4)  # Offset when ready/moving (further forward to prevent hand inward rotation)
 @export var sheathed_weapon_offset: Vector3 = Vector3(0.5, -0.6, 0.2)  # Offset when sheathed at side
 @export var weapon_transition_speed: float = 8.0  # Speed of state transitions
 
@@ -1440,72 +1440,6 @@ func _trigger_muzzle_flash():
 
 	print("Muzzle flash at ", flash_position)
 
-	return  # Skip old particle code below
-
-	# Create one-shot muzzle flash particles
-	var flash_particles = CPUParticles3D.new()
-	get_tree().root.add_child(flash_particles)
-	flash_particles.global_position = flash_position
-
-	# Configure flash particles - ENHANCED FOR VISIBILITY
-	flash_particles.emitting = true
-	flash_particles.one_shot = true
-	flash_particles.explosiveness = 1.0
-	flash_particles.amount = 50  # More particles for better visibility
-	flash_particles.lifetime = 0.15  # Slightly longer
-	flash_particles.speed_scale = 4.0
-
-	# Emission shape - cone forward
-	flash_particles.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
-	flash_particles.emission_sphere_radius = 0.05  # Larger emission area
-	flash_particles.direction = Vector3(0, 0, 1)  # Forward in local space
-	flash_particles.spread = 20.0
-
-	# Particle properties
-	flash_particles.initial_velocity_min = 5.0
-	flash_particles.initial_velocity_max = 10.0
-	flash_particles.gravity = Vector3.ZERO
-
-	# Visual - MUCH brighter and larger particles
-	flash_particles.scale_amount_min = 0.3
-	flash_particles.scale_amount_max = 0.5
-	flash_particles.color = Color(1.5, 1.2, 0.7, 1.0)  # Oversaturated for HDR bloom effect
-
-	# Fade out quickly
-	var gradient = Gradient.new()
-	gradient.add_point(0.0, Color(1, 1, 1, 1))
-	gradient.add_point(1.0, Color(1, 1, 1, 0))
-	flash_particles.color_ramp = gradient
-
-	# Add emissive material for glow effect
-	var material = StandardMaterial3D.new()
-	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED  # Full brightness
-	material.emission_enabled = true
-	material.emission = Color(1.5, 1.2, 0.7)  # Bright yellow emission
-	material.emission_energy_multiplier = 3.0  # Very bright
-	material.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED  # Face camera
-	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	material.blend_mode = BaseMaterial3D.BLEND_MODE_ADD  # Additive blending for brightness
-	flash_particles.material_override = material
-
-	# Auto-delete
-	var timer = get_tree().create_timer(flash_particles.lifetime + 0.05)
-	timer.timeout.connect(func(): flash_particles.queue_free())
-
-	# Also create bright light for flash
-	if not muzzle_flash_light:
-		muzzle_flash_light = OmniLight3D.new()
-		muzzle_flash_light.light_color = Color(1.0, 0.9, 0.6)  # Bright yellow-white
-		muzzle_flash_light.light_energy = 30.0  # VERY bright for high visibility
-		muzzle_flash_light.omni_range = 12.0  # Larger range
-		muzzle_flash_light.omni_attenuation = 1.5
-		muzzle_flash_light.shadow_enabled = false  # No shadows for better performance and visibility
-		equipped_weapon.muzzle_point.add_child(muzzle_flash_light)
-
-	# Enable the light and start timer
-	muzzle_flash_light.visible = true
-	muzzle_flash_timer = MUZZLE_FLASH_DURATION
-
 func _play_gunshot_sound():
 	"""Play simple gunshot sound"""
 	if not equipped_weapon:
@@ -1649,14 +1583,6 @@ func _create_bullet_hole_texture() -> ImageTexture:
 				image.set_pixel(x, y, Color(0, 0, 0, 0))
 
 	return ImageTexture.create_from_image(image)
-
-func _create_smoke_scale_curve() -> Curve:
-	"""Create curve for smoke that grows over time"""
-	var curve = Curve.new()
-	curve.add_point(Vector2(0.0, 0.3))  # Start small
-	curve.add_point(Vector2(0.5, 1.0))  # Grow
-	curve.add_point(Vector2(1.0, 1.5))  # End large
-	return curve
 
 func _update_recoil(delta: float):
 	"""Update recoil recovery in _process"""
