@@ -1535,62 +1535,145 @@ func _apply_recoil():
 	current_recoil_rotation.y += random_yaw
 
 func _create_impact_effect(impact_pos: Vector3, normal: Vector3):
-	"""Create particle effect at bullet impact point"""
-	# Create CPUParticles3D for impact effect
-	var particles = CPUParticles3D.new()
-	get_tree().root.add_child(particles)
-	particles.global_position = impact_pos
+	"""Create bullet hole decal and smoke effect at impact point"""
 
-	# Orient particles away from surface
-	# Check if normal is colinear with UP vector to avoid warning
+	# 1. CREATE BULLET HOLE DECAL
+	var decal = Decal.new()
+	get_tree().root.add_child(decal)
+	decal.global_position = impact_pos + normal * 0.01  # Slightly offset from surface
+
+	# Orient decal to face along surface normal
 	var up_vector = Vector3.UP
 	if abs(normal.dot(Vector3.UP)) > 0.99:  # Nearly parallel
-		up_vector = Vector3.RIGHT  # Use different up vector
-	particles.look_at(impact_pos + normal, up_vector)
+		up_vector = Vector3.RIGHT
+	decal.look_at(impact_pos + normal * 2.0, up_vector)
 
-	# Configure particles
-	particles.emitting = true
-	particles.one_shot = true
-	particles.explosiveness = 1.0
-	particles.amount = 20
-	particles.lifetime = 0.5
-	particles.speed_scale = 2.0
+	# Decal size and properties
+	decal.size = Vector3(0.2, 0.2, 0.5)  # Width, height, depth
+	decal.cull_mask = 0xFFFFF  # Render on all layers
 
-	# Emission shape - cone away from surface
-	particles.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
-	particles.emission_sphere_radius = 0.05
+	# Create bullet hole texture procedurally
+	var decal_material = StandardMaterial3D.new()
+	decal_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	decal_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	decal_material.albedo_color = Color(0.1, 0.1, 0.1, 0.8)  # Dark bullet hole
+	decal_material.blend_mode = BaseMaterial3D.BLEND_MODE_MUL  # Multiply blending for darkening
+	decal.texture_albedo = _create_bullet_hole_texture()
 
-	# Particle properties
-	particles.direction = normal
-	particles.spread = 30.0
-	particles.initial_velocity_min = 2.0
-	particles.initial_velocity_max = 5.0
-	particles.gravity = Vector3(0, -9.8, 0)
+	# Make decal permanent (or fade after time)
+	var decal_timer = get_tree().create_timer(30.0)  # Stay for 30 seconds
+	decal_timer.timeout.connect(func(): decal.queue_free())
 
-	# Visual properties - LARGER and more visible
-	particles.scale_amount_min = 0.1
-	particles.scale_amount_max = 0.2
-	particles.color = Color(0.8, 0.7, 0.5, 1.0)  # Dust/debris color
+	# 2. CREATE SMOKE PARTICLES
+	var smoke = CPUParticles3D.new()
+	get_tree().root.add_child(smoke)
+	smoke.global_position = impact_pos
+	smoke.emitting = true
+	smoke.one_shot = true
+	smoke.amount = 15
+	smoke.lifetime = 2.0
+	smoke.explosiveness = 0.3
 
-	# Fade out over lifetime
-	var gradient = Gradient.new()
-	gradient.add_point(0.0, Color(1, 1, 1, 1))
-	gradient.add_point(1.0, Color(1, 1, 1, 0))
-	particles.color_ramp = gradient
+	# Smoke properties
+	smoke.direction = normal
+	smoke.spread = 25.0
+	smoke.initial_velocity_min = 0.5
+	smoke.initial_velocity_max = 1.5
+	smoke.gravity = Vector3(0, 0.5, 0)  # Rises slowly
 
-	# Add visible material for impact particles
-	var material = StandardMaterial3D.new()
-	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED  # Always visible
-	material.albedo_color = Color(0.9, 0.8, 0.6)  # Light dust color
-	material.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED  # Face camera
-	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	particles.material_override = material
+	# Visual - gray smoke
+	smoke.scale_amount_min = 0.2
+	smoke.scale_amount_max = 0.5
+	smoke.scale_amount_curve = _create_smoke_scale_curve()
+	smoke.color = Color(0.3, 0.3, 0.3, 0.8)  # Gray smoke
 
-	# Auto-delete after lifetime
-	var timer = get_tree().create_timer(particles.lifetime + 0.1)
-	timer.timeout.connect(func(): particles.queue_free())
+	# Fade out smoke
+	var smoke_gradient = Gradient.new()
+	smoke_gradient.add_point(0.0, Color(1, 1, 1, 0.6))
+	smoke_gradient.add_point(0.5, Color(1, 1, 1, 0.3))
+	smoke_gradient.add_point(1.0, Color(1, 1, 1, 0))
+	smoke.color_ramp = smoke_gradient
 
-	print("Created impact effect at ", impact_pos, " with normal ", normal)
+	# Smoke material
+	var smoke_material = StandardMaterial3D.new()
+	smoke_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	smoke_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	smoke_material.albedo_color = Color(0.4, 0.4, 0.4)
+	smoke_material.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	smoke_material.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	smoke.material_override = smoke_material
+
+	# Auto-delete smoke
+	var smoke_timer = get_tree().create_timer(smoke.lifetime + 0.1)
+	smoke_timer.timeout.connect(func(): smoke.queue_free())
+
+	# 3. CREATE DEBRIS/SPARK PARTICLES
+	var debris = CPUParticles3D.new()
+	get_tree().root.add_child(debris)
+	debris.global_position = impact_pos
+	debris.emitting = true
+	debris.one_shot = true
+	debris.explosiveness = 1.0
+	debris.amount = 8
+	debris.lifetime = 0.3
+
+	# Debris properties
+	debris.direction = normal
+	debris.spread = 45.0
+	debris.initial_velocity_min = 3.0
+	debris.initial_velocity_max = 6.0
+	debris.gravity = Vector3(0, -15.0, 0)
+
+	# Visual - bright sparks
+	debris.scale_amount_min = 0.05
+	debris.scale_amount_max = 0.1
+	debris.color = Color(1.0, 0.8, 0.4, 1.0)  # Orange sparks
+
+	# Debris material
+	var debris_material = StandardMaterial3D.new()
+	debris_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	debris_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	debris_material.albedo_color = Color(1.0, 0.9, 0.5)
+	debris_material.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	debris_material.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	debris.material_override = debris_material
+
+	# Auto-delete debris
+	var debris_timer = get_tree().create_timer(debris.lifetime + 0.1)
+	debris_timer.timeout.connect(func(): debris.queue_free())
+
+	print("Created bullet hole, smoke, and debris at ", impact_pos)
+
+func _create_bullet_hole_texture() -> ImageTexture:
+	"""Create a simple circular bullet hole texture"""
+	var size = 64
+	var image = Image.create(size, size, false, Image.FORMAT_RGBA8)
+
+	var center = Vector2(size / 2, size / 2)
+	var radius = size / 2.5
+
+	for y in range(size):
+		for x in range(size):
+			var pos = Vector2(x, y)
+			var dist = pos.distance_to(center)
+
+			if dist < radius:
+				# Create gradient from center (black) to edge (transparent)
+				var alpha = 1.0 - (dist / radius)
+				alpha = clamp(alpha * 1.5, 0.0, 1.0)
+				image.set_pixel(x, y, Color(0, 0, 0, alpha))
+			else:
+				image.set_pixel(x, y, Color(0, 0, 0, 0))
+
+	return ImageTexture.create_from_image(image)
+
+func _create_smoke_scale_curve() -> Curve:
+	"""Create curve for smoke that grows over time"""
+	var curve = Curve.new()
+	curve.add_point(Vector2(0.0, 0.3))  # Start small
+	curve.add_point(Vector2(0.5, 1.0))  # Grow
+	curve.add_point(Vector2(1.0, 1.5))  # End large
+	return curve
 
 func _update_recoil(delta: float):
 	"""Update recoil recovery in _process"""
