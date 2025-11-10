@@ -1630,7 +1630,7 @@ func _create_smoke_mesh() -> QuadMesh:
 	return mesh
 
 func _play_gunshot_sound():
-	"""Play simple gunshot sound"""
+	"""Play realistic gunshot sound"""
 	if not equipped_weapon:
 		return
 
@@ -1641,10 +1641,10 @@ func _play_gunshot_sound():
 		gunshot_audio.unit_size = 10.0  # Very loud
 		add_child(gunshot_audio)
 
-	# Create simple gunshot using AudioStreamGenerator
+	# Create gunshot using AudioStreamGenerator with higher quality
 	var generator = AudioStreamGenerator.new()
-	generator.mix_rate = 22050.0  # Lower rate for simpler sound
-	generator.buffer_length = 0.2
+	generator.mix_rate = 44100.0  # Standard CD quality for better sound
+	generator.buffer_length = 0.15  # Slightly longer buffer
 
 	gunshot_audio.stream = generator
 	gunshot_audio.global_position = equipped_weapon.global_position
@@ -1654,7 +1654,7 @@ func _play_gunshot_sound():
 	_fill_gunshot_buffer.call_deferred()
 
 func _fill_gunshot_buffer():
-	"""Fill the audio buffer with gunshot sound"""
+	"""Fill the audio buffer with realistic multi-layered gunshot sound"""
 	if not gunshot_audio:
 		return
 
@@ -1662,34 +1662,55 @@ func _fill_gunshot_buffer():
 	if not playback:
 		return
 
-	# Generate realistic gunshot: sharp attack with filtered noise
-	var samples = 2205  # 0.1s at 22050Hz
+	# Generate realistic gunshot with multiple frequency layers
+	var samples = 4410  # 0.1s at 44100Hz
 
-	# Simple low-pass filter state
-	var filtered_sample = 0.0
-	var filter_alpha = 0.3
+	# Filter states for different frequency bands
+	var bass_filter = 0.0
+	var mid_filter = 0.0
+	var prev_sample = 0.0  # For smoothing
+
+	# Random variation per shot
+	var shot_variation = randf_range(0.9, 1.1)
 
 	for i in range(samples):
 		var t = float(i) / float(samples)
 
-		# Very sharp attack, quick decay for realistic gunshot
-		var env = exp(-t * 25.0)  # Sharp decay
+		# Multi-stage envelope for realistic gunshot
+		var attack = 1.0 - smoothstep(0.0, 0.02, t)  # Very sharp initial attack (20ms)
+		var body = exp(-t * 15.0)  # Main body decay
+		var tail = exp(-t * 8.0)  # Longer tail for echo
 
-		# Generate white noise and low-pass filter it for bass
+		# Generate white noise
 		var noise = (randf() * 2.0 - 1.0)
-		filtered_sample = filter_alpha * noise + (1.0 - filter_alpha) * filtered_sample
 
-		# Initial sharp crack (first 5% of sound)
+		# LAYER 1: Sharp high-frequency crack (initial impact)
 		var crack = 0.0
-		if t < 0.05:
-			crack = noise * (1.0 - t / 0.05) * 0.8
+		if t < 0.03:
+			crack = noise * attack * 0.9
 
-		# Mix filtered bass noise with sharp crack
-		var sample = (filtered_sample * 0.7 + crack) * env
+		# LAYER 2: Mid-frequency boom (main gunshot body)
+		# Low-pass filter for mid frequencies
+		mid_filter = 0.4 * noise + 0.6 * mid_filter
+		var boom = mid_filter * body * 0.7
+
+		# LAYER 3: Deep bass rumble (barrel resonance)
+		# Stronger low-pass filter for bass
+		bass_filter = 0.15 * noise + 0.85 * bass_filter
+		var rumble = bass_filter * tail * 0.5
+
+		# Mix all layers
+		var sample = (crack + boom + rumble) * shot_variation
+
+		# Smooth to prevent clicks (simple one-pole filter)
+		sample = 0.8 * sample + 0.2 * prev_sample
+		prev_sample = sample
+
+		# Clamp to valid range
 		sample = clamp(sample, -1.0, 1.0)
-		playback.push_frame(Vector2(sample, sample))
 
-	print("Gunshot sound: BANG!")
+		# Push stereo frame
+		playback.push_frame(Vector2(sample, sample))
 
 func _apply_recoil():
 	"""Apply recoil to camera and weapon"""
