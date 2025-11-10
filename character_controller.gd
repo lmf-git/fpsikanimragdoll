@@ -1567,9 +1567,9 @@ func _create_impact_effect(impact_pos: Vector3, normal: Vector3):
 	particles.initial_velocity_max = 5.0
 	particles.gravity = Vector3(0, -9.8, 0)
 
-	# Visual properties
-	particles.scale_amount_min = 0.02
-	particles.scale_amount_max = 0.05
+	# Visual properties - LARGER and more visible
+	particles.scale_amount_min = 0.1
+	particles.scale_amount_max = 0.2
 	particles.color = Color(0.8, 0.7, 0.5, 1.0)  # Dust/debris color
 
 	# Fade out over lifetime
@@ -1578,9 +1578,19 @@ func _create_impact_effect(impact_pos: Vector3, normal: Vector3):
 	gradient.add_point(1.0, Color(1, 1, 1, 0))
 	particles.color_ramp = gradient
 
+	# Add visible material for impact particles
+	var material = StandardMaterial3D.new()
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED  # Always visible
+	material.albedo_color = Color(0.9, 0.8, 0.6)  # Light dust color
+	material.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED  # Face camera
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	particles.material_override = material
+
 	# Auto-delete after lifetime
 	var timer = get_tree().create_timer(particles.lifetime + 0.1)
 	timer.timeout.connect(func(): particles.queue_free())
+
+	print("Created impact effect at ", impact_pos, " with normal ", normal)
 
 func _update_recoil(delta: float):
 	"""Update recoil recovery in _process"""

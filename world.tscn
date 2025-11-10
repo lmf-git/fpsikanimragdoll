@@ -35,6 +35,9 @@ albedo_color = Color(0.4, 0.5, 0.4, 1)
 [sub_resource type="BoxShape3D" id="BoxShape3D_box"]
 size = Vector3(1, 1, 1)
 
+[sub_resource type="BoxShape3D" id="BoxShape3D_wall"]
+size = Vector3(10, 3, 0.5)
+
 [sub_resource type="BoxMesh" id="BoxMesh_box"]
 size = Vector3(1, 1, 1)
 
@@ -99,11 +102,11 @@ surface_material_override/0 = SubResource("Material_box")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, -5)
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Wall"]
-shape = SubResource("BoxShape3D_box")
+shape = SubResource("BoxShape3D_wall")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="Wall"]
-transform = Transform3D(10, 0, 0, 0, 3, 0, 0, 0, 0.5, 0, 0, 0)
 mesh = SubResource("BoxMesh_box")
+transform = Transform3D(10, 0, 0, 0, 3, 0, 0, 0, 0.5, 0, 0, 0)
 surface_material_override/0 = SubResource("Material_box")
 
 [node name="Weapons" type="Node3D" parent="."]
