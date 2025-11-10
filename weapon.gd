@@ -124,9 +124,9 @@ func equip(character: Node3D, hand_attachment: Node3D = null):
 	holder = character
 
 	# Disable physics when equipped - CRITICAL: set freeze_mode to KINEMATIC
-	# This allows us to move the weapon programmatically while physics is disabled
-	freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC  # Allow programmatic movement
-	freeze = true
+	# This allows the weapon to follow its parent (BoneAttachment3D) while physics is disabled
+	freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC  # Allow parent-driven movement
+	freeze = false  # Must be false to follow parent transform
 	gravity_scale = 0.0
 	collision_layer = 0
 	collision_mask = 0
@@ -147,9 +147,9 @@ func equip(character: Node3D, hand_attachment: Node3D = null):
 		# Get grip offset in local space
 		var grip_local_pos = main_grip.position
 
-		# Apply rotation offset first (e.g., rotate pistol to point forward)
+		# Apply rotation offset - no rotation needed, weapon already points correctly
 		var rotation_offset = Basis()
-		rotation_offset = rotation_offset.rotated(Vector3.RIGHT, deg_to_rad(-90))  # Pitch down
+		# Pistol orientation is correct by default
 		transform.basis = rotation_offset
 
 		# Position weapon so grip point is at hand origin (0,0,0 in hand local space)
@@ -327,7 +327,6 @@ func _drop_from_ragdoll():
 
 	# Mark as unequipped
 	is_equipped = false
-	var old_holder = holder
 	holder = null
 
 	print("Weapon ", weapon_name, " dropped from ragdoll at ", global_position)
