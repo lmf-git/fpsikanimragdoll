@@ -2177,13 +2177,14 @@ func _process(_delta):
 			if right_elbow_ik:
 				right_elbow_ik.start()
 
-			# Finger IK for weapon grip
-			if right_thumb_ik:
-				right_thumb_ik.start()
-			if right_index_ik:
-				right_index_ik.start()
-			if right_middle_ik:
-				right_middle_ik.start()
+			# Finger IK disabled - causes hand spinning
+			# TODO: Fix finger IK conflicts before re-enabling
+			#if right_thumb_ik:
+			#	right_thumb_ik.start()
+			#if right_index_ik:
+			#	right_index_ik.start()
+			#if right_middle_ik:
+			#	right_middle_ik.start()
 
 			# Left arm IK control based on weapon state
 			if weapon_state == WeaponState.AIMING:
@@ -2226,13 +2227,14 @@ func _process(_delta):
 			if right_elbow_ik:
 				right_elbow_ik.start()
 
-			# Finger IK for weapon grip
-			if right_thumb_ik:
-				right_thumb_ik.start()
-			if right_index_ik:
-				right_index_ik.start()
-			if right_middle_ik:
-				right_middle_ik.start()
+			# Finger IK disabled - causes hand spinning
+			# TODO: Fix finger IK conflicts before re-enabling
+			#if right_thumb_ik:
+			#	right_thumb_ik.start()
+			#if right_index_ik:
+			#	right_index_ik.start()
+			#if right_middle_ik:
+			#	right_middle_ik.start()
 
 			# Left arm IK only when aiming
 			if weapon_state == WeaponState.AIMING:
