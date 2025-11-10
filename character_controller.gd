@@ -1787,9 +1787,9 @@ func _update_weapon_ik_targets():
 				var left_hand_pos = right_hand_pos + body_basis * foregrip_offset
 				left_hand_target.global_position = left_hand_pos
 		else:
-			# Pistol: Position left hand to support pistol grip
+			# Pistol (one-handed): Left hand only supports when aiming, not during hip fire
 			# Left hand should be below and slightly forward of right hand for proper pistol grip
-			if weapon_state == WeaponState.AIMING or weapon_state == WeaponState.READY:
+			if weapon_state == WeaponState.AIMING:
 				var body_basis = Basis(Vector3.UP, body_rotation_y)
 				var right_hand_pos: Vector3 = right_hand_target.global_position if right_hand_target else global_position
 
@@ -1802,7 +1802,7 @@ func _update_weapon_ik_targets():
 				var left_hand_pos = right_hand_pos + body_basis * support_grip_offset
 				left_hand_target.global_position = left_hand_pos
 			else:
-				# When sheathed, use rest position
+				# When hip firing (READY) or sheathed, left hand goes to rest position (one-handed grip)
 				var l_hand_id = skeleton.find_bone("characters3d.com___L_Hand")
 				if l_hand_id >= 0:
 					var left_hand_rest = skeleton.global_transform * skeleton.get_bone_rest(l_hand_id).origin
