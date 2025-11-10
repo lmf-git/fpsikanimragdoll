@@ -86,8 +86,8 @@ var weapon_state: WeaponState = WeaponState.READY
 var is_weapon_sheathed: bool = false  # Toggle for sheathed state
 
 # Weapon positioning - skeleton-relative offsets
-@export var aim_weapon_offset: Vector3 = Vector3(0.15, 0.25, -1.5)  # Offset when aiming down sights (lowered for better hand position)
-@export var ready_weapon_offset: Vector3 = Vector3(0.25, 0.0, -1.4)  # Offset when ready/moving (lowered to chest level)
+@export var aim_weapon_offset: Vector3 = Vector3(0.15, 0.4, -1.7)  # Offset when aiming down sights (higher and further forward)
+@export var ready_weapon_offset: Vector3 = Vector3(0.25, 0.2, -1.6)  # Offset when ready/moving (higher and further forward)
 @export var sheathed_weapon_offset: Vector3 = Vector3(0.5, -0.6, 0.2)  # Offset when sheathed at side
 @export var weapon_transition_speed: float = 8.0  # Speed of state transitions
 
@@ -1977,15 +1977,21 @@ func _update_weapon_ik_targets():
 		var aim_right = aim_direction.cross(up_ref).normalized()
 		var aim_down = aim_right.cross(aim_direction).normalized()
 
-		# Position elbow OUT TO THE SIDE and DOWN to prevent inward rotation
-		# Start closer to chest (35% to hand instead of 45%)
-		var elbow_pos = anchor_transform.origin + chest_to_hand * 0.35
+		# Position elbow FAR OUT TO THE SIDE and DOWN to prevent inward hand rotation
+		# Keep elbow closer to shoulder (30% to hand)
+		var elbow_pos = anchor_transform.origin + chest_to_hand * 0.3
 
-		# Much larger offset to the right to keep elbow away from body
-		elbow_pos += aim_right * 0.35  # Further right (was 0.25)
-		elbow_pos += aim_down * 0.2   # Further down (was 0.15)
+		# VERY LARGE offset to the right to force elbow outward
+		elbow_pos += aim_right * 0.5   # Much further right (was 0.35)
+		elbow_pos += aim_down * 0.25   # Further down (was 0.2)
 
 		right_elbow_target.global_position = elbow_pos
+
+		# Set magnet position for wrist IK to pull hand outward (prevents inward rotation)
+		if right_wrist_ik:
+			# Magnet pulls the wrist bend to the right
+			var magnet_pos = right_hand_target.global_position + aim_right * 0.3
+			right_wrist_ik.magnet_position = magnet_pos
 
 		# Wrist target is just for visualization now (wrist IK uses hand_target)
 		# Position it between elbow and hand for visual reference
@@ -2006,14 +2012,20 @@ func _update_weapon_ik_targets():
 			var aim_right = aim_direction.cross(up_ref).normalized()
 			var aim_down = aim_right.cross(aim_direction).normalized()
 
-			# Position elbow OUT TO THE LEFT SIDE and DOWN to prevent inward rotation
-			var elbow_pos = anchor_transform.origin + chest_to_hand * 0.35
+			# Position elbow FAR OUT TO THE LEFT SIDE and DOWN to prevent inward hand rotation
+			var elbow_pos = anchor_transform.origin + chest_to_hand * 0.3
 
-			# Much larger offset to the left to keep elbow away from body
-			elbow_pos += aim_right * -0.35  # Further left (was -0.25)
-			elbow_pos += aim_down * 0.2    # Further down (was 0.15)
+			# VERY LARGE offset to the left to force elbow outward
+			elbow_pos += aim_right * -0.5   # Much further left (was -0.35)
+			elbow_pos += aim_down * 0.25    # Further down (was 0.2)
 
 			left_elbow_target.global_position = elbow_pos
+
+			# Set magnet position for wrist IK to pull hand outward (prevents inward rotation)
+			if left_wrist_ik:
+				# Magnet pulls the wrist bend to the left
+				var magnet_pos = left_hand_target.global_position + aim_right * -0.3
+				left_wrist_ik.magnet_position = magnet_pos
 
 			# Wrist target is just for visualization now (wrist IK uses hand_target)
 			var wrist_pos = left_elbow_target.global_position.lerp(left_hand_target.global_position, 0.6)
