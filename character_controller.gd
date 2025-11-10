@@ -1522,11 +1522,19 @@ func _trigger_muzzle_flash():
 	if not equipped_weapon:
 		return
 
-	# Get muzzle position and direction from gun barrel
-	var muzzle_position = equipped_weapon.global_position
+	# Get muzzle position from gun barrel (or calculate from weapon forward)
+	var muzzle_position: Vector3
+	var muzzle_rotation: Vector3
 
 	if equipped_weapon.muzzle_point:
 		muzzle_position = equipped_weapon.muzzle_point.global_position
+		muzzle_rotation = equipped_weapon.muzzle_point.global_rotation
+	else:
+		# No muzzle point - estimate from weapon forward direction
+		# Gun barrel points in -Z direction locally
+		var weapon_forward = -equipped_weapon.global_transform.basis.z
+		muzzle_position = equipped_weapon.global_position + weapon_forward * 0.3  # 30cm forward
+		muzzle_rotation = equipped_weapon.global_rotation
 
 	# 1. CREATE BRIGHT MUZZLE FLASH (small and subtle)
 	var flash = OmniLight3D.new()
@@ -1548,17 +1556,14 @@ func _trigger_muzzle_flash():
 	smoke.global_position = muzzle_position
 
 	# Orient smoke to shoot forward from barrel
-	if equipped_weapon.muzzle_point:
-		smoke.global_rotation = equipped_weapon.muzzle_point.global_rotation
-	else:
-		smoke.global_rotation = equipped_weapon.global_rotation
+	smoke.global_rotation = muzzle_rotation
 
-	# Particle settings - subtle smoke puff from barrel
+	# Particle settings - very subtle smoke wisp from barrel
 	smoke.emitting = true
 	smoke.one_shot = true
-	smoke.explosiveness = 0.6  # Quick burst
-	smoke.amount = 6  # Reduced amount for subtler effect
-	smoke.lifetime = 0.8  # Shorter lifetime
+	smoke.explosiveness = 0.7  # Quick burst
+	smoke.amount = 3  # Very few particles for subtle muzzle smoke
+	smoke.lifetime = 0.6  # Quick dissipation
 	smoke.speed_scale = 1.0
 
 	# Create particle material
@@ -1570,8 +1575,8 @@ func _trigger_muzzle_flash():
 	smoke_material.gravity = Vector3(0, 0.15, 0)  # Slight upward drift
 	smoke_material.damping_min = 1.5
 	smoke_material.damping_max = 2.0
-	smoke_material.scale_min = 0.02  # Tiny circular smoke puffs
-	smoke_material.scale_max = 0.04
+	smoke_material.scale_min = 0.01  # Extremely small smoke wisps
+	smoke_material.scale_max = 0.02
 	smoke_material.scale_curve = _create_muzzle_smoke_scale_curve()
 	smoke_material.color = Color(0.3, 0.3, 0.35, 0.6)  # Gray-blue gunpowder smoke
 	smoke_material.color_ramp = _create_muzzle_smoke_fade_gradient()
@@ -1618,10 +1623,10 @@ func _create_impact_smoke_fade_gradient() -> Gradient:
 func _create_smoke_mesh() -> SphereMesh:
 	"""Create circular mesh for smoke particles"""
 	var mesh = SphereMesh.new()
-	mesh.radius = 0.1  # Smaller radius for subtle smoke
-	mesh.height = 0.2  # Make it spherical
-	mesh.radial_segments = 8  # Low poly for performance
-	mesh.rings = 4
+	mesh.radius = 0.05  # Very small radius for tiny smoke wisps
+	mesh.height = 0.1  # Make it spherical
+	mesh.radial_segments = 6  # Low poly for performance
+	mesh.rings = 3
 
 	# Create material for smoke particles
 	var material = StandardMaterial3D.new()
@@ -1998,10 +2003,13 @@ func _update_weapon_ik_targets():
 
 		right_hand_target.global_position = target_pos
 
-		# Set hand target rotation to match camera direction for proper weapon grip
-		# The hand bone will rotate to match this via IK, and weapon inherits that rotation
-		# This must update every frame smoothly with camera to avoid jittering
-		right_hand_target.global_transform.basis = camera_basis
+		# Set hand target rotation for proper pistol grip
+		# Start with camera basis, then rotate for grip orientation
+		# Pistol grip: palm faces down/inward, thumb up, fingers wrap around grip
+		var grip_rotation = Basis()
+		grip_rotation = grip_rotation.rotated(Vector3.RIGHT, deg_to_rad(-90))  # Rotate hand down 90° for pistol grip
+		var hand_basis = camera_basis * grip_rotation
+		right_hand_target.global_transform.basis = hand_basis
 
 	# Update left hand IK target ONLY for two-handed weapons (rifles)
 	var left_hand_target = ik_targets_node.get_node_or_null("LeftHandTarget")
