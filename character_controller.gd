@@ -91,7 +91,7 @@ var is_weapon_sheathed: bool = false  # Toggle for sheathed state
 var is_aim_toggled: bool = false  # Toggle for aiming (Ctrl+RightClick)
 
 # Weapon positioning - skeleton-relative offsets
-@export var aim_weapon_offset: Vector3 = Vector3(0.15, 0.4, -1.7)  # Offset when aiming down sights (higher and further forward)
+@export var aim_weapon_offset: Vector3 = Vector3(0.0, 0.45, -1.8)  # Offset when aiming down sights (centered, higher, further forward)
 @export var ready_weapon_offset: Vector3 = Vector3(0.25, 0.2, -1.6)  # Offset when ready/moving (higher and further forward)
 @export var sheathed_weapon_offset: Vector3 = Vector3(0.5, -0.6, 0.2)  # Offset when sheathed at side
 @export var weapon_transition_speed: float = 8.0  # Speed of state transitions
@@ -1996,14 +1996,19 @@ func _update_weapon_ik_targets():
 		right_hand_target.global_position = target_pos
 
 		# Set hand rotation to grip weapon properly
-		# Hand should be oriented so palm faces toward grip (away from camera)
+		# Hand rotates to grip: palm down, thumb up, fingers forward
 		var camera_forward = -active_camera.global_transform.basis.z
 		var camera_right = active_camera.global_transform.basis.x
 		var camera_up = active_camera.global_transform.basis.y
 
-		# Create grip-oriented basis: palm faces down/forward, fingers point forward
-		# X axis = right (thumb direction), Y axis = up (back of hand), Z axis = forward (palm faces back)
-		var grip_basis = Basis(camera_right, camera_up, -camera_forward)
+		# Pistol grip rotation: hand rotates so palm faces down and inward
+		# The hand needs to rotate ~90° from camera basis to grip properly
+		# Final orientation: thumb points up, palm faces left/down, fingers wrap around grip
+		var grip_right = camera_forward  # Thumb points in direction of aim
+		var grip_up = camera_right  # Back of hand points right
+		var grip_forward = -camera_up  # Palm faces down
+
+		var grip_basis = Basis(grip_right, grip_up, grip_forward)
 		right_hand_target.global_transform.basis = grip_basis
 
 	# Update left hand IK target ONLY for two-handed weapons (rifles)
