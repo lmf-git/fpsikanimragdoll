@@ -377,8 +377,8 @@ func _create_ik_system():
 		print("Created LeftElbowIK (Shoulder -> Lower_Arm)")
 
 	# Chain 2: Lower_Arm -> Hand (controls wrist/hand position)
-	# We'll use wrist target if available, otherwise hand target
-	var left_hand_final_target = left_wrist_target if left_wrist_target else left_hand_target
+	# Use hand_target because this chain ends at the Hand bone
+	var left_hand_final_target = left_hand_target
 	if left_hand_final_target:
 		left_wrist_ik = SkeletonIK3D.new()
 		left_wrist_ik.name = "LeftWristIK"
@@ -404,7 +404,8 @@ func _create_ik_system():
 		print("Created RightElbowIK (Shoulder -> Lower_Arm)")
 
 	# Chain 2: Lower_Arm -> Hand (controls wrist/hand position)
-	var right_hand_final_target = right_wrist_target if right_wrist_target else right_hand_target
+	# Use hand_target because this chain ends at the Hand bone
+	var right_hand_final_target = right_hand_target
 	if right_hand_final_target:
 		right_wrist_ik = SkeletonIK3D.new()
 		right_wrist_ik.name = "RightWristIK"
@@ -1962,72 +1963,60 @@ func _update_weapon_ik_targets():
 	else:
 		anchor_transform = global_transform
 
-	# RIGHT ARM: Position elbow and wrist targets to follow hand target
-	# This makes the entire arm follow the aim direction
+	# RIGHT ARM: Position elbow target to create proper arm bend
+	# The wrist IK now uses hand_target, so we only need to position elbow correctly
 	if right_hand_target and right_elbow_target and right_wrist_target:
 		# Calculate direction from chest to hand target (aim direction)
 		var chest_to_hand = right_hand_target.global_position - anchor_transform.origin
 		var aim_direction = chest_to_hand.normalized()
 
-		# Position elbow along aim line but offset to the side
-		# Start halfway along the aim direction
-		var elbow_pos = anchor_transform.origin + chest_to_hand * 0.45  # 45% to hand
-
-		# Create perpendicular offset (right and down) relative to aim direction
-		# Get the right vector perpendicular to aim direction
+		# Create perpendicular vectors for elbow positioning
 		var up_ref = Vector3.UP
 		if abs(aim_direction.dot(Vector3.UP)) > 0.9:
 			up_ref = Vector3.RIGHT
 		var aim_right = aim_direction.cross(up_ref).normalized()
 		var aim_down = aim_right.cross(aim_direction).normalized()
 
-		# Offset elbow to the right and down from aim line
-		elbow_pos += aim_right * 0.25  # More to the right for better bend
-		elbow_pos += aim_down * 0.15  # Down for natural drop
+		# Position elbow OUT TO THE SIDE and DOWN to prevent inward rotation
+		# Start closer to chest (35% to hand instead of 45%)
+		var elbow_pos = anchor_transform.origin + chest_to_hand * 0.35
+
+		# Much larger offset to the right to keep elbow away from body
+		elbow_pos += aim_right * 0.35  # Further right (was 0.25)
+		elbow_pos += aim_down * 0.2   # Further down (was 0.15)
 
 		right_elbow_target.global_position = elbow_pos
 
-		# Position wrist between elbow and hand with rotation offset for grip
-		# Base position: between elbow and hand
-		var wrist_pos = right_elbow_target.global_position.lerp(right_hand_target.global_position, 0.7)
-
-		# Offset wrist slightly to the RIGHT to rotate forearm for gun grip
-		# This makes the palm face left (toward gun handle) instead of facing body
-		wrist_pos += aim_right * 0.08  # Offset to the right to rotate hand
-
+		# Wrist target is just for visualization now (wrist IK uses hand_target)
+		# Position it between elbow and hand for visual reference
+		var wrist_pos = right_elbow_target.global_position.lerp(right_hand_target.global_position, 0.6)
 		right_wrist_target.global_position = wrist_pos
 
 	# LEFT ARM: Position elbow and wrist targets to follow hand target
 	if left_hand_target and left_elbow_target and left_wrist_target:
 		if equipped_weapon.is_two_handed or weapon_state == WeaponState.AIMING:
 			# Two-handed weapon or aiming with pistol: left hand supports weapon
-			# Position elbow and wrist to follow the left hand target (same as right arm logic)
 			var chest_to_hand = left_hand_target.global_position - anchor_transform.origin
 			var aim_direction = chest_to_hand.normalized()
 
-			# Position elbow along aim line but offset to the side
-			var elbow_pos = anchor_transform.origin + chest_to_hand * 0.45  # 45% to hand
-
-			# Create perpendicular offset (left and down) relative to aim direction
+			# Create perpendicular vectors for elbow positioning
 			var up_ref = Vector3.UP
 			if abs(aim_direction.dot(Vector3.UP)) > 0.9:
 				up_ref = Vector3.RIGHT
 			var aim_right = aim_direction.cross(up_ref).normalized()
 			var aim_down = aim_right.cross(aim_direction).normalized()
 
-			# Offset elbow to the left and down from aim line
-			elbow_pos += aim_right * -0.25  # To the left (negative right)
-			elbow_pos += aim_down * 0.15  # Down for natural drop
+			# Position elbow OUT TO THE LEFT SIDE and DOWN to prevent inward rotation
+			var elbow_pos = anchor_transform.origin + chest_to_hand * 0.35
+
+			# Much larger offset to the left to keep elbow away from body
+			elbow_pos += aim_right * -0.35  # Further left (was -0.25)
+			elbow_pos += aim_down * 0.2    # Further down (was 0.15)
 
 			left_elbow_target.global_position = elbow_pos
 
-			# Position wrist between elbow and hand with rotation offset for grip
-			var wrist_pos = left_elbow_target.global_position.lerp(left_hand_target.global_position, 0.7)
-
-			# Offset wrist slightly to the LEFT to rotate forearm for gun grip
-			# This makes the palm face right (toward gun handle) instead of facing body
-			wrist_pos += aim_right * -0.08  # Offset to the left (negative right) to rotate hand
-
+			# Wrist target is just for visualization now (wrist IK uses hand_target)
+			var wrist_pos = left_elbow_target.global_position.lerp(left_hand_target.global_position, 0.6)
 			left_wrist_target.global_position = wrist_pos
 		else:
 			# Pistol hip fire: left arm stays at rest position
@@ -2070,8 +2059,8 @@ func _update_weapon_to_hand():
 
 		# Make weapon point forward along camera aim
 		# Weapon's local -Z axis should point along camera forward
-		# Build basis: right=camera_right, up=camera_up, forward=camera_forward
-		var weapon_basis = Basis(camera_right, camera_up, camera_forward)
+		# Build basis: right=camera_right, up=camera_up, forward=-camera_forward (Godot uses -Z as forward)
+		var weapon_basis = Basis(camera_right, camera_up, -camera_forward)
 		equipped_weapon.global_transform.basis = weapon_basis
 
 		# Position weapon so grip aligns with hand bone
