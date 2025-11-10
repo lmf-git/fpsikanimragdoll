@@ -2134,7 +2134,7 @@ func _update_weapon_ik_targets():
 				left_wrist_target.global_position = left_wrist_rest
 
 func _update_weapon_to_hand():
-	"""Position weapon at IK target location (called AFTER IK is applied)"""
+	"""Update weapon orientation to match camera aim (called AFTER IK is applied)"""
 	if not equipped_weapon:
 		return
 
@@ -2143,37 +2143,33 @@ func _update_weapon_to_hand():
 	if not active_camera:
 		return
 
-	# Get the right hand IK target - this is where we want the weapon grip to be
-	var ik_targets_node = get_node_or_null("IKTargets")
-	if not ik_targets_node:
-		return
-
-	var right_hand_target = ik_targets_node.get_node_or_null("RightHandTarget")
-	if not right_hand_target:
-		return
-
-	# STEP 1: Orient weapon to point where camera is aiming
+	# The weapon is parented to hand bone via BoneAttachment3D, so it follows the hand automatically
+	# We only need to set the local rotation to point forward along camera aim
 	if equipped_weapon.main_grip:
-		# Get camera aim direction
+		# Get parent transform (hand bone)
+		var parent = equipped_weapon.get_parent()
+		if not parent:
+			return
+
+		# Get camera aim direction in global space
 		var camera_forward = -active_camera.global_transform.basis.z
 		var camera_right = active_camera.global_transform.basis.x
 		var camera_up = active_camera.global_transform.basis.y
 
-		# Make weapon point forward along camera aim
-		# Weapon's local -Z axis should point along camera forward
-		# Build basis: right=camera_right, up=camera_up, forward=-camera_forward (Godot uses -Z as forward)
-		var weapon_basis = Basis(camera_right, camera_up, -camera_forward)
-		equipped_weapon.global_transform.basis = weapon_basis
+		# Build weapon basis in global space
+		var weapon_global_basis = Basis(camera_right, camera_up, -camera_forward)
 
-		# Position weapon so grip aligns with hand IK target (not hand bone)
+		# Convert to local space relative to parent
+		var parent_global_basis = parent.global_transform.basis
+		var weapon_local_basis = parent_global_basis.inverse() * weapon_global_basis
+
+		# Set local rotation only (position is handled by grip offset)
+		equipped_weapon.transform.basis = weapon_local_basis
+
+		# Set local position so grip aligns with hand bone origin
 		var grip_local_pos = equipped_weapon.main_grip.position
-		var grip_world_offset = equipped_weapon.global_transform.basis * grip_local_pos
-		equipped_weapon.global_position = right_hand_target.global_position - grip_world_offset
-	else:
-		# Fallback: point weapon forward from hand target position
-		var camera_forward = -active_camera.global_transform.basis.z
-		equipped_weapon.global_position = right_hand_target.global_position
-		equipped_weapon.look_at(right_hand_target.global_position + camera_forward * 10.0, Vector3.UP)
+		var grip_offset = weapon_local_basis * grip_local_pos
+		equipped_weapon.transform.origin = -grip_offset
 
 func _process(_delta):
 	# WEAPON UPDATE ORDER - CRITICAL for proper IK-based positioning:
