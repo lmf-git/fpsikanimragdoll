@@ -1456,11 +1456,9 @@ func _trigger_muzzle_flash():
 
 	# Get muzzle position and direction from gun barrel
 	var muzzle_position = equipped_weapon.global_position
-	var muzzle_forward = -equipped_weapon.global_transform.basis.z
 
 	if equipped_weapon.muzzle_point:
 		muzzle_position = equipped_weapon.muzzle_point.global_position
-		muzzle_forward = -equipped_weapon.muzzle_point.global_transform.basis.z
 
 	# 1. CREATE BRIGHT MUZZLE FLASH
 	var flash = OmniLight3D.new()
@@ -1970,7 +1968,6 @@ func _update_weapon_ik_targets():
 		# Calculate direction from chest to hand target (aim direction)
 		var chest_to_hand = right_hand_target.global_position - anchor_transform.origin
 		var aim_direction = chest_to_hand.normalized()
-		var hand_distance = chest_to_hand.length()
 
 		# Position elbow along aim line but offset to the side
 		# Start halfway along the aim direction
@@ -2007,7 +2004,6 @@ func _update_weapon_ik_targets():
 			# Position elbow and wrist to follow the left hand target (same as right arm logic)
 			var chest_to_hand = left_hand_target.global_position - anchor_transform.origin
 			var aim_direction = chest_to_hand.normalized()
-			var hand_distance = chest_to_hand.length()
 
 			# Position elbow along aim line but offset to the side
 			var elbow_pos = anchor_transform.origin + chest_to_hand * 0.45  # 45% to hand
