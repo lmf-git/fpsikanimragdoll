@@ -1884,6 +1884,48 @@ func _update_weapon_to_hand():
 		equipped_weapon.global_transform = right_hand_transform
 		print("DEBUG: No main_grip, set weapon transform to hand transform")
 
+func _align_weapon_with_camera():
+	"""Orient weapon to point along camera's line of sight"""
+	if not equipped_weapon or not skeleton or right_hand_bone_id < 0:
+		return
+
+	var camera = fps_camera if camera_mode == 0 else tps_camera
+	if not camera:
+		return
+
+	# Get camera's forward direction (where it's looking)
+	var camera_forward = -camera.global_transform.basis.z
+
+	# Get hand bone position
+	var hand_transform = skeleton.global_transform * skeleton.get_bone_global_pose(right_hand_bone_id)
+
+	# Orient weapon to point forward along camera direction
+	# Create a basis that points the weapon forward
+	var target_basis = Basis()
+
+	# Make weapon's -Z axis point along camera forward direction
+	var weapon_forward = camera_forward
+	# Use camera's up direction for weapon up
+	var weapon_up = camera.global_transform.basis.y
+
+	# Create orthonormal basis
+	var weapon_right = weapon_up.cross(weapon_forward).normalized()
+	weapon_up = weapon_forward.cross(weapon_right).normalized()
+
+	# Build basis from axes
+	target_basis.x = weapon_right
+	target_basis.y = weapon_up
+	target_basis.z = -weapon_forward  # Godot uses -Z as forward
+
+	# Apply the rotation to the weapon
+	equipped_weapon.global_transform.basis = target_basis
+
+	# Now position weapon so grip point aligns with hand
+	if equipped_weapon.main_grip:
+		var grip_local_pos = equipped_weapon.main_grip.position
+		var grip_world_offset = equipped_weapon.global_transform.basis * grip_local_pos
+		equipped_weapon.global_position = hand_transform.origin - grip_world_offset
+
 func _process(_delta):
 	# WEAPON UPDATE ORDER - CRITICAL for proper IK-based positioning:
 	# 1. Set IK targets (where hands should go based on weapon state/aiming)
@@ -1962,3 +2004,7 @@ func _process(_delta):
 
 	# STEP 3: Weapon automatically follows hand bone (parented to BoneAttachment3D)
 	# No manual update needed!
+
+	# STEP 4: Orient weapon to point along camera line of sight
+	if equipped_weapon:
+		_align_weapon_with_camera()
