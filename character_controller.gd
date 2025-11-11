@@ -1725,13 +1725,19 @@ func _update_weapon_ik_targets():
 		WeaponState.AIMING:
 			target_offset = aim_weapon_offset
 
+	# Get camera rotation for positioning hands relative to aim direction
+	var camera_rotation_y = active_camera.global_rotation.y
+	var camera_rotation_x = camera_rotation.x  # Pitch (up/down)
+
+	# Create basis from both yaw (Y) and pitch (X) to follow camera aim fully
+	var camera_basis = Basis()
+	camera_basis = camera_basis.rotated(Vector3.UP, camera_rotation_y)  # Yaw first
+	camera_basis = camera_basis.rotated(camera_basis.x, camera_rotation_x)  # Then pitch relative to yaw
+
 	# Position right hand IK target following camera aim direction
 	var right_hand_target = ik_targets_node.get_node_or_null("RightHandTarget")
 	if right_hand_target:
 		var base_offset = target_offset + current_sway
-
-		# Get camera rotation for positioning hands relative to aim direction
-		var camera_rotation_y = active_camera.global_rotation.y
 
 		# Use chest bone as anchor point for body-relative positioning
 		var anchor_transform: Transform3D
@@ -1740,10 +1746,6 @@ func _update_weapon_ik_targets():
 		else:
 			# Fallback to character position if no chest bone
 			anchor_transform = global_transform
-
-		# Position hand relative to body/chest using CAMERA'S aim direction
-		# This makes the hands rotate with the camera so gun points where you're looking
-		var camera_basis = Basis(Vector3.UP, camera_rotation_y)  # Camera aim direction
 
 		# Apply hand recoil to offset
 		var final_offset = base_offset + current_hand_recoil
@@ -1767,8 +1769,6 @@ func _update_weapon_ik_targets():
 			else:
 				# No secondary grip - calculate position relative to right hand
 				# Position left hand forward and slightly up from right hand
-				var camera_basis = Basis(Vector3.UP, camera_rotation_y)
-
 				# Start from right hand target position
 				var right_hand_pos: Vector3 = right_hand_target.global_position if right_hand_target else global_position
 
@@ -1785,7 +1785,6 @@ func _update_weapon_ik_targets():
 			# Pistol (one-handed): Left hand only supports when aiming, not during hip fire
 			# Left hand should be below and slightly forward of right hand for proper pistol grip
 			if weapon_state == WeaponState.AIMING:
-				var camera_basis = Basis(Vector3.UP, camera_rotation_y)
 				var right_hand_pos: Vector3 = right_hand_target.global_position if right_hand_target else global_position
 
 				# Offset for pistol support grip:
@@ -1810,14 +1809,12 @@ func _update_weapon_ik_targets():
 	if right_hand_target and right_elbow_pole:
 		# Position right elbow pole to guide elbow to bend outward
 		# Place it to the right and slightly forward of the hand target
-		var camera_basis = Basis(Vector3.UP, camera_rotation_y)
 		var elbow_offset = Vector3(0.2, 0.0, -0.2)  # Right and forward
 		right_elbow_pole.global_position = right_hand_target.global_position + camera_basis * elbow_offset
 
 	if left_hand_target and left_elbow_pole:
 		# Position left elbow pole to guide elbow to bend outward
 		# Place it to the left and slightly forward of the hand target
-		var camera_basis = Basis(Vector3.UP, camera_rotation_y)
 		var elbow_offset = Vector3(-0.2, 0.0, -0.2)  # Left and forward
 		left_elbow_pole.global_position = left_hand_target.global_position + camera_basis * elbow_offset
 
@@ -1828,13 +1825,11 @@ func _update_weapon_ik_targets():
 	if right_hand_target and right_wrist_pole:
 		# Position right wrist pole closer to hand, slightly down and outward
 		# This helps guide the wrist orientation for proper weapon grip
-		var camera_basis = Basis(Vector3.UP, camera_rotation_y)
 		var wrist_offset = Vector3(0.1, -0.05, -0.1)  # Slightly right, down, and forward
 		right_wrist_pole.global_position = right_hand_target.global_position + camera_basis * wrist_offset
 
 	if left_hand_target and left_wrist_pole:
 		# Position left wrist pole for support hand positioning
-		var camera_basis = Basis(Vector3.UP, camera_rotation_y)
 		var wrist_offset = Vector3(-0.1, -0.05, -0.1)  # Slightly left, down, and forward
 		left_wrist_pole.global_position = left_hand_target.global_position + camera_basis * wrist_offset
 
