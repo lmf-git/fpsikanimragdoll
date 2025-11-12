@@ -1968,33 +1968,26 @@ func _get_constrained_aim_target() -> Vector3:
 	# Return final target position
 	return aim_origin + final_direction * max(target_distance, aim_distance_limit)
 
-func _aim_bone_at_target(bone_id: int, target_pos: Vector3, bone_weight: float):
-	"""Aim a single bone at the target position"""
+func _aim_bone_toward_direction(bone_id: int, aim_direction: Vector3, bone_weight: float):
+	"""Rotate bone toward aim direction (avoids circular dependency)"""
 	if bone_id < 0 or not skeleton:
 		return
-
-	# Get aim origin (weapon muzzle or approximate position)
-	var aim_origin = global_position + Vector3(0, 1.5, 0)
-	if equipped_weapon and equipped_weapon.muzzle_point:
-		aim_origin = equipped_weapon.muzzle_point.global_position
-	elif equipped_weapon:
-		aim_origin = equipped_weapon.global_position
 
 	# Get bone's current global pose
 	var bone_global_pose = skeleton.get_bone_global_pose(bone_id)
 	var bone_global_transform = skeleton.global_transform * bone_global_pose
 
-	# Calculate directions
-	var aim_direction = (aim_origin - bone_global_transform.origin).normalized()
-	var target_direction = (target_pos - bone_global_transform.origin).normalized()
+	# Get bone's current forward direction (in global space)
+	# Spine bones typically point upward, so we use +Y as their "forward"
+	var bone_forward = bone_global_transform.basis.y
 
-	# Calculate rotation needed to aim at target
-	var rotation_axis = aim_direction.cross(target_direction)
+	# Calculate rotation needed to align bone forward with aim direction
+	var rotation_axis = bone_forward.cross(aim_direction)
 	if rotation_axis.length_squared() < 0.0001:
 		return  # Already aligned or opposite directions
 
 	rotation_axis = rotation_axis.normalized()
-	var rotation_angle = acos(clamp(aim_direction.dot(target_direction), -1.0, 1.0))
+	var rotation_angle = acos(clamp(bone_forward.dot(aim_direction), -1.0, 1.0))
 
 	# Apply bone weight to rotation
 	rotation_angle *= bone_weight * aim_ik_weight
@@ -2019,12 +2012,29 @@ func _aim_bone_at_target(bone_id: int, target_pos: Vector3, bone_weight: float):
 		skeleton.set_bone_pose_rotation(bone_id, local_transform.basis.get_rotation_quaternion())
 
 func _apply_spine_aiming():
-	"""Apply spine bone rotations to aim weapon at camera target"""
+	"""Apply spine bone rotations to aim upper body toward camera direction"""
 	if not aim_ik_enabled or not equipped_weapon or not skeleton:
 		return
 
-	# Get constrained target position
-	var target_pos = _get_constrained_aim_target()
+	var camera = fps_camera if camera_mode == 0 else tps_camera
+	if not camera:
+		return
+
+	# Get camera's forward direction (where it's looking)
+	var camera_forward = -camera.global_transform.basis.z
+
+	# Apply angle constraint - don't aim too far back or to sides
+	var body_forward = -global_transform.basis.z
+	var angle_to_camera = rad_to_deg(acos(clamp(body_forward.dot(camera_forward), -1.0, 1.0)))
+
+	# Blend toward body forward if exceeding angle limit
+	var blend_weight = 1.0
+	if angle_to_camera > aim_angle_limit:
+		blend_weight = 1.0 - ((angle_to_camera - aim_angle_limit) / aim_angle_limit)
+		blend_weight = clamp(blend_weight, 0.0, 1.0)
+
+	# Calculate final aim direction
+	var aim_direction = camera_forward.lerp(body_forward, 1.0 - blend_weight).normalized()
 
 	# List of bones to rotate (in order from bottom to top)
 	var aim_bones = []
@@ -2038,7 +2048,7 @@ func _apply_spine_aiming():
 	# Apply aiming with multiple iterations for accuracy
 	for iteration in range(aim_ik_iterations):
 		for bone_data in aim_bones:
-			_aim_bone_at_target(bone_data["id"], target_pos, bone_data["weight"])
+			_aim_bone_toward_direction(bone_data["id"], aim_direction, bone_data["weight"])
 
 func _process(_delta):
 	# WEAPON UPDATE ORDER - CRITICAL for proper IK-based positioning:
