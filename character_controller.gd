@@ -2196,3 +2196,7 @@ func _process(_delta):
 	if equipped_weapon and weapon_state == WeaponState.AIMING:
 		_apply_spine_aiming()
 		_rotate_hand_to_grip_weapon()
+	else:
+		# Reset spine bone rotation when not aiming to prevent head staying broken
+		if spine_bone_id >= 0 and skeleton:
+			skeleton.set_bone_pose_rotation(spine_bone_id, Quaternion.IDENTITY)
