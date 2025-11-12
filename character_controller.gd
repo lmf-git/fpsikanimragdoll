@@ -172,8 +172,8 @@ var mesh_instance: MeshInstance3D
 
 # Per-bone weights for spine aiming
 var spine_bone_weights: Dictionary = {
-	"Spine": 0.5,  # Increased from 0.4 to compensate for removed upper_chest
-	"Chest": 0.8,  # Increased from 0.6 to compensate for removed upper_chest
+	"Spine": 1.0,  # Only rotate Spine bone
+	"Chest": 0.0,  # Don't rotate - Chest is parent of upper_chest/neck/head hierarchy
 	"Upper_Chest": 0.0  # Not used - upper_chest is parent of neck/head, rotating it displaces head
 }
 
@@ -1063,16 +1063,6 @@ func _update_head_look(delta):
 	var head_yaw = clamp(head_yaw_offset,
 		deg_to_rad(-max_head_rotation_y),
 		deg_to_rad(max_head_rotation_y))
-
-	# When weapon is equipped, reset to rest pose first to avoid accumulation with spine aiming
-	if equipped_weapon:
-		# Reset neck and head to rest pose before applying head rotation
-		if neck_bone_id >= 0:
-			var rest_pose = skeleton.get_bone_rest(neck_bone_id)
-			skeleton.set_bone_pose_rotation(neck_bone_id, rest_pose.basis.get_rotation_quaternion())
-		if head_bone_id >= 0:
-			var rest_pose = skeleton.get_bone_rest(head_bone_id)
-			skeleton.set_bone_pose_rotation(head_bone_id, rest_pose.basis.get_rotation_quaternion())
 
 	# Apply rotation to neck (contributes to yaw and some pitch)
 	if neck_bone_id >= 0:
@@ -2103,9 +2093,9 @@ func _apply_spine_aiming():
 	var aim_bones = []
 	if spine_bone_id >= 0:
 		aim_bones.append({"id": spine_bone_id, "weight": spine_bone_weights["Spine"]})
-	if chest_bone_id >= 0:
-		aim_bones.append({"id": chest_bone_id, "weight": spine_bone_weights["Chest"]})
-	# Don't rotate upper_chest - it's parent of neck/head, rotating it displaces head position
+	# Don't rotate chest/upper_chest - they're parents of neck/head, rotating them displaces head
+	# if chest_bone_id >= 0:
+	#     aim_bones.append({"id": chest_bone_id, "weight": spine_bone_weights["Chest"]})
 	# if upper_chest_bone_id >= 0:
 	#     aim_bones.append({"id": upper_chest_bone_id, "weight": spine_bone_weights["Upper_Chest"]})
 
