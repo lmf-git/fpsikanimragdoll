@@ -1064,6 +1064,12 @@ func _update_head_look(delta):
 		deg_to_rad(-max_head_rotation_y),
 		deg_to_rad(max_head_rotation_y))
 
+	# When weapon equipped, reduce pitch to prevent head bending down too much
+	# Spine aiming handles vertical aim, head should stay more neutral
+	var pitch_multiplier = 1.0
+	if equipped_weapon:
+		pitch_multiplier = 0.2  # Reduce head pitch by 80% when aiming
+
 	# Apply rotation to neck (contributes to yaw and some pitch)
 	if neck_bone_id >= 0:
 		var neck_pose = skeleton.get_bone_pose(neck_bone_id)
@@ -1071,7 +1077,7 @@ func _update_head_look(delta):
 		# Neck contributes 40% of the yaw rotation
 		neck_target = neck_target.rotated(Vector3.UP, head_yaw * 0.4)
 		# Neck contributes 30% of pitch (negated due to 180° model rotation)
-		neck_target = neck_target.rotated(neck_target.x, -head_pitch * 0.3)
+		neck_target = neck_target.rotated(neck_target.x, -head_pitch * 0.3 * pitch_multiplier)
 		neck_target = neck_target * original_neck_pose.basis
 
 		neck_pose.basis = neck_pose.basis.slerp(neck_target, head_rotation_speed * delta)
@@ -1083,7 +1089,7 @@ func _update_head_look(delta):
 	# Head contributes 60% of yaw rotation
 	head_target = head_target.rotated(Vector3.UP, head_yaw * 0.6)
 	# Head contributes 70% of pitch (negated due to 180° model rotation)
-	head_target = head_target.rotated(head_target.x, -head_pitch * 0.7)
+	head_target = head_target.rotated(head_target.x, -head_pitch * 0.7 * pitch_multiplier)
 	head_target = head_target * original_head_pose.basis
 
 	head_pose.basis = head_pose.basis.slerp(head_target, head_rotation_speed * delta)
