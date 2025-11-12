@@ -1031,9 +1031,7 @@ func _physics_process(delta):
 
 	move_and_slide()
 
-	# Update head rotation for aiming
-	if head_look_enabled and skeleton and head_bone_id >= 0:
-		_update_head_look(delta)
+	# Head rotation moved to _process after spine aiming to avoid conflicts
 
 	# Update recoil recovery
 	_update_recoil(delta)
@@ -2011,6 +2009,52 @@ func _aim_bone_toward_direction(bone_id: int, aim_direction: Vector3, bone_weigh
 		var local_transform = skeleton_inv * Transform3D(new_basis, bone_global_transform.origin)
 		skeleton.set_bone_pose_rotation(bone_id, local_transform.basis.get_rotation_quaternion())
 
+func _rotate_hand_to_grip_weapon():
+	"""Rotate right hand bone to grip weapon with palm facing inward"""
+	if not equipped_weapon or not skeleton or right_hand_bone_id < 0:
+		return
+
+	var camera = fps_camera if camera_mode == 0 else tps_camera
+	if not camera:
+		return
+
+	# Get camera's forward direction (where weapon should point)
+	var camera_forward = -camera.global_transform.basis.z
+	var camera_up = camera.global_transform.basis.y
+
+	# Get current hand bone global pose (after IK)
+	var hand_global_pose = skeleton.get_bone_global_pose(right_hand_bone_id)
+	var hand_global_transform = skeleton.global_transform * hand_global_pose
+
+	# Create target rotation for hand to grip weapon
+	# Hand should point forward along camera direction
+	# Palm should face inward/left (toward body)
+	var hand_forward = camera_forward
+	var hand_up = camera_up
+
+	# For right hand gripping pistol:
+	# - Forward (-Z) should point along camera forward
+	# - Up (+Y) should generally face up
+	# - Right (+X) should point right (thumb side)
+
+	# Create orthonormal basis
+	var hand_right = hand_up.cross(hand_forward).normalized()
+	hand_up = hand_forward.cross(hand_right).normalized()
+
+	# Build target basis for hand
+	var target_basis = Basis()
+	target_basis.x = hand_right
+	target_basis.y = hand_up
+	target_basis.z = -hand_forward  # Godot uses -Z as forward
+
+	# Convert to bone local space
+	var parent_id = skeleton.get_bone_parent(right_hand_bone_id)
+	if parent_id >= 0:
+		var parent_global_transform = skeleton.global_transform * skeleton.get_bone_global_pose(parent_id)
+		var parent_inv = parent_global_transform.affine_inverse()
+		var local_transform = parent_inv * Transform3D(target_basis, hand_global_transform.origin)
+		skeleton.set_bone_pose_rotation(right_hand_bone_id, local_transform.basis.get_rotation_quaternion())
+
 func _apply_spine_aiming():
 	"""Apply spine bone rotations to aim upper body toward camera direction"""
 	if not aim_ik_enabled or not equipped_weapon or not skeleton:
@@ -2130,3 +2174,8 @@ func _process(_delta):
 	# After IK is applied, rotate spine bones to aim weapon at camera target
 	if equipped_weapon:
 		_apply_spine_aiming()
+		_rotate_hand_to_grip_weapon()
+
+	# STEP 4: Update head rotation after spine aiming to avoid conflicts
+	if head_look_enabled and skeleton and head_bone_id >= 0:
+		_update_head_look(get_process_delta_time())
