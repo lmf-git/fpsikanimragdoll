@@ -172,9 +172,9 @@ var mesh_instance: MeshInstance3D
 
 # Per-bone weights for spine aiming
 var spine_bone_weights: Dictionary = {
-	"Spine": 0.4,
-	"Chest": 0.6,
-	"Upper_Chest": 0.2  # Lower weight to avoid pulling head down
+	"Spine": 0.5,  # Increased from 0.4 to compensate for removed upper_chest
+	"Chest": 0.8,  # Increased from 0.6 to compensate for removed upper_chest
+	"Upper_Chest": 0.0  # Not used - upper_chest is parent of neck/head, rotating it displaces head
 }
 
 func _ready():
@@ -2095,8 +2095,9 @@ func _apply_spine_aiming():
 		aim_bones.append({"id": spine_bone_id, "weight": spine_bone_weights["Spine"]})
 	if chest_bone_id >= 0:
 		aim_bones.append({"id": chest_bone_id, "weight": spine_bone_weights["Chest"]})
-	if upper_chest_bone_id >= 0:
-		aim_bones.append({"id": upper_chest_bone_id, "weight": spine_bone_weights["Upper_Chest"]})
+	# Don't rotate upper_chest - it's parent of neck/head, rotating it displaces head position
+	# if upper_chest_bone_id >= 0:
+	#     aim_bones.append({"id": upper_chest_bone_id, "weight": spine_bone_weights["Upper_Chest"]})
 
 	# Apply aiming with multiple iterations for accuracy
 	for iteration in range(aim_ik_iterations):
