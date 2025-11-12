@@ -2192,6 +2192,7 @@ func _process(_delta):
 
 	# STEP 4: Weapon automatically follows hand bone (parented to BoneAttachment3D)
 	# After head and IK, rotate spine bones to aim weapon at camera target
-	if equipped_weapon:
+	# Only apply spine aiming when actively aiming, not just when weapon is equipped
+	if equipped_weapon and weapon_state == WeaponState.AIMING:
 		_apply_spine_aiming()
 		_rotate_hand_to_grip_weapon()
