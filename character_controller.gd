@@ -2170,12 +2170,13 @@ func _process(_delta):
 			if right_foot_ik:
 				right_foot_ik.stop()
 
-	# STEP 3: Weapon automatically follows hand bone (parented to BoneAttachment3D)
-	# After IK is applied, rotate spine bones to aim weapon at camera target
+	# STEP 3: Apply head rotation BEFORE spine aiming to avoid conflicts
+	# Head rotation must happen first since spine aiming rotates upper_chest (parent of neck)
+	if head_look_enabled and skeleton and head_bone_id >= 0:
+		_update_head_look(get_process_delta_time())
+
+	# STEP 4: Weapon automatically follows hand bone (parented to BoneAttachment3D)
+	# After head and IK, rotate spine bones to aim weapon at camera target
 	if equipped_weapon:
 		_apply_spine_aiming()
 		_rotate_hand_to_grip_weapon()
-
-	# STEP 4: Update head rotation after spine aiming to avoid conflicts
-	if head_look_enabled and skeleton and head_bone_id >= 0:
-		_update_head_look(get_process_delta_time())
