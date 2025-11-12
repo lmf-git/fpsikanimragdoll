@@ -1064,6 +1064,16 @@ func _update_head_look(delta):
 		deg_to_rad(-max_head_rotation_y),
 		deg_to_rad(max_head_rotation_y))
 
+	# When weapon is equipped, reset to rest pose first to avoid accumulation with spine aiming
+	if equipped_weapon:
+		# Reset neck and head to rest pose before applying head rotation
+		if neck_bone_id >= 0:
+			var rest_pose = skeleton.get_bone_rest(neck_bone_id)
+			skeleton.set_bone_pose_rotation(neck_bone_id, rest_pose.basis.get_rotation_quaternion())
+		if head_bone_id >= 0:
+			var rest_pose = skeleton.get_bone_rest(head_bone_id)
+			skeleton.set_bone_pose_rotation(head_bone_id, rest_pose.basis.get_rotation_quaternion())
+
 	# Apply rotation to neck (contributes to yaw and some pitch)
 	if neck_bone_id >= 0:
 		var neck_pose = skeleton.get_bone_pose(neck_bone_id)
@@ -2180,8 +2190,7 @@ func _process(_delta):
 			if right_foot_ik:
 				right_foot_ik.stop()
 
-	# STEP 3: Apply head rotation BEFORE spine aiming to avoid conflicts
-	# Head rotation must happen first since spine aiming rotates upper_chest (parent of neck)
+	# STEP 3: Apply head rotation BEFORE spine aiming
 	if head_look_enabled and skeleton and head_bone_id >= 0:
 		_update_head_look(get_process_delta_time())
 
