@@ -80,6 +80,7 @@ var last_nearby_weapon: Weapon = null  # Track changes for debug logging
 enum WeaponState { SHEATHED, READY, AIMING }
 var weapon_state: WeaponState = WeaponState.READY
 var is_weapon_sheathed: bool = false  # Toggle for sheathed state
+var is_aim_toggled: bool = false  # Toggle aim mode (Ctrl+Right-Click)
 
 # Weapon positioning - skeleton-relative offsets
 @export var aim_weapon_offset: Vector3 = Vector3(0.15, 0.25, -1.5)  # Offset when aiming down sights (lowered for better hand position)
@@ -171,9 +172,9 @@ var mesh_instance: MeshInstance3D
 
 # Per-bone weights for spine aiming
 var spine_bone_weights: Dictionary = {
-	"Spine": 0.3,
-	"Chest": 0.5,
-	"Upper_Chest": 0.7
+	"Spine": 0.4,
+	"Chest": 0.6,
+	"Upper_Chest": 0.2  # Lower weight to avoid pulling head down
 }
 
 func _ready():
@@ -773,11 +774,19 @@ func _input(event):
 
 	# Right click for weapon aim
 	if event is InputEventMouseButton:
-		if event.button_index == MOUSE_BUTTON_RIGHT:
-			if event.pressed and equipped_weapon and not is_weapon_sheathed:
-				weapon_state = WeaponState.AIMING
+		if event.button_index == MOUSE_BUTTON_RIGHT and event.pressed and equipped_weapon and not is_weapon_sheathed:
+			# Ctrl+Right-Click to toggle aim (sticky aim)
+			if event.ctrl_pressed:
+				is_aim_toggled = !is_aim_toggled
+				weapon_state = WeaponState.AIMING if is_aim_toggled else (WeaponState.SHEATHED if is_weapon_sheathed else WeaponState.READY)
+				print("Aim toggled: ", "ON" if is_aim_toggled else "OFF")
+			# Regular Right-Click for temporary aim (hold to aim)
 			else:
-				# Return to ready or sheathed based on sheathed flag
+				if not is_aim_toggled:  # Only allow temporary aim if not toggled on
+					weapon_state = WeaponState.AIMING
+		elif event.button_index == MOUSE_BUTTON_RIGHT and not event.pressed:
+			# Release right-click: return to ready unless aim is toggled on
+			if not is_aim_toggled:
 				weapon_state = WeaponState.SHEATHED if is_weapon_sheathed else WeaponState.READY
 
 	# H key to toggle weapon sheathed/ready
