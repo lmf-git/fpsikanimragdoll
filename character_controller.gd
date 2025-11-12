@@ -151,12 +151,30 @@ var body_rotation_y: float = 0.0  # Actual body Y rotation
 var head_bone_id: int = -1
 var neck_bone_id: int = -1
 var chest_bone_id: int = -1  # For weapon positioning anchor
+var spine_bone_id: int = -1  # For spine aiming
+var upper_chest_bone_id: int = -1  # For spine aiming
 var right_hand_bone_id: int = -1
 var left_hand_bone_id: int = -1
 var right_hand_attachment: BoneAttachment3D = null  # For attaching weapons to hand
 var original_head_pose: Transform3D
 var original_neck_pose: Transform3D
 var mesh_instance: MeshInstance3D
+
+# Spine IK aiming parameters
+@export_group("Weapon Aiming")
+@export var aim_ik_enabled: bool = true
+@export var aim_ik_iterations: int = 3
+@export_range(0.0, 1.0) var aim_ik_weight: float = 1.0
+@export var aim_angle_limit: float = 90.0  # Maximum aim angle in degrees
+@export var aim_distance_limit: float = 1.5  # Minimum aim distance
+@export var aim_target_offset: Vector3 = Vector3(0.0, 1.36, 0.0)  # Offset to aim at (e.g., chest height)
+
+# Per-bone weights for spine aiming
+var spine_bone_weights: Dictionary = {
+	"Spine": 0.3,
+	"Chest": 0.5,
+	"Upper_Chest": 0.7
+}
 
 func _ready():
 	print("\n=== Character Controller Ready ===")
@@ -177,6 +195,10 @@ func _ready():
 		chest_bone_id = skeleton.find_bone("characters3d.com___Upper_Chest")
 		if chest_bone_id < 0:
 			chest_bone_id = skeleton.find_bone("characters3d.com___Chest")
+
+		# Find spine bones for aiming IK
+		spine_bone_id = skeleton.find_bone("characters3d.com___Spine")
+		upper_chest_bone_id = skeleton.find_bone("characters3d.com___Upper_Chest")
 
 		if head_bone_id >= 0:
 			original_head_pose = skeleton.get_bone_pose(head_bone_id)
@@ -1725,16 +1747,11 @@ func _update_weapon_ik_targets():
 		WeaponState.AIMING:
 			target_offset = aim_weapon_offset
 
-	# Get camera rotation for positioning hands relative to aim direction
-	var camera_rotation_y = active_camera.global_rotation.y
-	var camera_rotation_x = camera_rotation.x  # Pitch (up/down)
+	# Create body-relative basis for hand positioning
+	# Hands stay relative to body - spine bones will rotate to aim
+	var body_basis = Basis(Vector3.UP, body_rotation_y)
 
-	# Create basis from both yaw (Y) and pitch (X) to follow camera aim fully
-	var camera_basis = Basis()
-	camera_basis = camera_basis.rotated(Vector3.UP, camera_rotation_y)  # Yaw first
-	camera_basis = camera_basis.rotated(camera_basis.x, camera_rotation_x)  # Then pitch relative to yaw
-
-	# Position right hand IK target following camera aim direction
+	# Position right hand IK target relative to body
 	var right_hand_target = ik_targets_node.get_node_or_null("RightHandTarget")
 	if right_hand_target:
 		var base_offset = target_offset + current_sway
@@ -1749,7 +1766,7 @@ func _update_weapon_ik_targets():
 
 		# Apply hand recoil to offset
 		var final_offset = base_offset + current_hand_recoil
-		var target_pos = anchor_transform.origin + camera_basis * final_offset
+		var target_pos = anchor_transform.origin + body_basis * final_offset
 
 		# DEBUG: Track target movement when state changes
 		if weapon_state == WeaponState.AIMING and right_hand_target.global_position.distance_to(target_pos) > 0.01:
@@ -1778,8 +1795,8 @@ func _update_weapon_ik_targets():
 				# - No left/right offset (centerline)
 				var foregrip_offset = Vector3(0.0, 0.05, -0.35)  # Higher and forward
 
-				# Apply camera-relative offset
-				var left_hand_pos = right_hand_pos + camera_basis * foregrip_offset
+				# Apply body-relative offset
+				var left_hand_pos = right_hand_pos + body_basis * foregrip_offset
 				left_hand_target.global_position = left_hand_pos
 		else:
 			# Pistol (one-handed): Left hand only supports when aiming, not during hip fire
@@ -1793,7 +1810,7 @@ func _update_weapon_ik_targets():
 				# - Right: 0.03m to the right (crosses under) to create elbow bend
 				var support_grip_offset = Vector3(0.03, -0.08, -0.05)  # Right, down, forward
 
-				var left_hand_pos = right_hand_pos + camera_basis * support_grip_offset
+				var left_hand_pos = right_hand_pos + body_basis * support_grip_offset
 				left_hand_target.global_position = left_hand_pos
 			else:
 				# When hip firing (READY) or sheathed, left hand goes to rest position (one-handed grip)
@@ -1810,13 +1827,13 @@ func _update_weapon_ik_targets():
 		# Position right elbow pole to guide elbow to bend outward
 		# Place it to the right and slightly forward of the hand target
 		var elbow_offset = Vector3(0.2, 0.0, -0.2)  # Right and forward
-		right_elbow_pole.global_position = right_hand_target.global_position + camera_basis * elbow_offset
+		right_elbow_pole.global_position = right_hand_target.global_position + body_basis * elbow_offset
 
 	if left_hand_target and left_elbow_pole:
 		# Position left elbow pole to guide elbow to bend outward
 		# Place it to the left and slightly forward of the hand target
 		var elbow_offset = Vector3(-0.2, 0.0, -0.2)  # Left and forward
-		left_elbow_pole.global_position = left_hand_target.global_position + camera_basis * elbow_offset
+		left_elbow_pole.global_position = left_hand_target.global_position + body_basis * elbow_offset
 
 	# Update wrist pole positions for refined hand/wrist control
 	var left_wrist_pole = ik_targets_node.get_node_or_null("LeftWristPole")
@@ -1826,12 +1843,12 @@ func _update_weapon_ik_targets():
 		# Position right wrist pole closer to hand, slightly down and outward
 		# This helps guide the wrist orientation for proper weapon grip
 		var wrist_offset = Vector3(0.1, -0.05, -0.1)  # Slightly right, down, and forward
-		right_wrist_pole.global_position = right_hand_target.global_position + camera_basis * wrist_offset
+		right_wrist_pole.global_position = right_hand_target.global_position + body_basis * wrist_offset
 
 	if left_hand_target and left_wrist_pole:
 		# Position left wrist pole for support hand positioning
 		var wrist_offset = Vector3(-0.1, -0.05, -0.1)  # Slightly left, down, and forward
-		left_wrist_pole.global_position = left_hand_target.global_position + camera_basis * wrist_offset
+		left_wrist_pole.global_position = left_hand_target.global_position + body_basis * wrist_offset
 
 func _update_weapon_to_hand():
 	"""Position weapon to follow IK-transformed hand bone (called AFTER IK is applied)"""
@@ -1884,46 +1901,122 @@ func _update_weapon_to_hand():
 		equipped_weapon.global_transform = right_hand_transform
 		print("DEBUG: No main_grip, set weapon transform to hand transform")
 
-func _orient_hand_for_weapon_grip():
-	"""Rotate hand bone after IK to grip weapon pointing toward camera"""
-	if not equipped_weapon or not skeleton or right_hand_bone_id < 0:
-		return
+func _get_constrained_aim_target() -> Vector3:
+	"""Calculate aim target position with angle and distance constraints"""
+	if not equipped_weapon:
+		return global_position + global_transform.basis * Vector3(0, 0, -10)
 
 	var camera = fps_camera if camera_mode == 0 else tps_camera
 	if not camera:
+		return global_position + global_transform.basis * Vector3(0, 0, -10)
+
+	# Get aim origin (weapon raycast position)
+	var aim_origin = global_position + Vector3(0, 1.5, 0)  # Approximate chest height
+	if equipped_weapon.muzzle_point:
+		aim_origin = equipped_weapon.muzzle_point.global_position
+
+	# Get raw target position (where camera is looking)
+	var camera_forward = -camera.global_transform.basis.z
+	var target_position = camera.global_position + camera_forward * 100.0
+
+	# Add offset to target (e.g., aim at chest instead of feet)
+	target_position += aim_target_offset
+
+	# Calculate direction and distance to target
+	var target_direction = (target_position - aim_origin).normalized()
+	var target_distance = aim_origin.distance_to(target_position)
+	var aim_forward = -global_transform.basis.z
+
+	# Calculate blend amount for constraints
+	var blend_out = 0.0
+
+	# Constraint 1: Angle limit
+	var angle_to_target = rad_to_deg(acos(aim_forward.dot(target_direction)))
+	if angle_to_target > aim_angle_limit:
+		blend_out = max(blend_out, (angle_to_target - aim_angle_limit) / aim_angle_limit)
+
+	# Constraint 2: Distance limit
+	if target_distance < aim_distance_limit:
+		blend_out = max(blend_out, (aim_distance_limit - target_distance) / aim_distance_limit)
+
+	# Blend between target direction and forward direction
+	blend_out = clamp(blend_out, 0.0, 1.0)
+	var final_direction = target_direction.lerp(aim_forward, blend_out).normalized()
+
+	# Return final target position
+	return aim_origin + final_direction * max(target_distance, aim_distance_limit)
+
+func _aim_bone_at_target(bone_id: int, target_pos: Vector3, bone_weight: float):
+	"""Aim a single bone at the target position"""
+	if bone_id < 0 or not skeleton:
 		return
 
-	# Get camera's forward direction (where it's looking)
-	var camera_forward = -camera.global_transform.basis.z
-	var camera_up = camera.global_transform.basis.y
+	# Get aim origin (weapon muzzle or approximate position)
+	var aim_origin = global_position + Vector3(0, 1.5, 0)
+	if equipped_weapon and equipped_weapon.muzzle_point:
+		aim_origin = equipped_weapon.muzzle_point.global_position
+	elif equipped_weapon:
+		aim_origin = equipped_weapon.global_position
 
-	# Create target rotation for the hand to point weapon forward
-	# The weapon's local -Z should point along camera forward when held
-	var hand_forward = camera_forward
-	var hand_up = camera_up
+	# Get bone's current global pose
+	var bone_global_pose = skeleton.get_bone_global_pose(bone_id)
+	var bone_global_transform = skeleton.global_transform * bone_global_pose
 
-	# Create orthonormal basis for hand orientation
-	var hand_right = hand_up.cross(hand_forward).normalized()
-	hand_up = hand_forward.cross(hand_right).normalized()
+	# Calculate directions
+	var aim_direction = (aim_origin - bone_global_transform.origin).normalized()
+	var target_direction = (target_pos - bone_global_transform.origin).normalized()
 
-	# Build target basis
-	var target_basis = Basis()
-	target_basis.x = hand_right
-	target_basis.y = hand_up
-	target_basis.z = -hand_forward  # Godot uses -Z as forward
+	# Calculate rotation needed to aim at target
+	var rotation_axis = aim_direction.cross(target_direction)
+	if rotation_axis.length_squared() < 0.0001:
+		return  # Already aligned or opposite directions
 
-	# Get current hand bone global pose
-	var current_pose = skeleton.get_bone_global_pose(right_hand_bone_id)
+	rotation_axis = rotation_axis.normalized()
+	var rotation_angle = acos(clamp(aim_direction.dot(target_direction), -1.0, 1.0))
 
-	# Convert target basis from global space to skeleton local space
-	var skeleton_global_basis_inv = skeleton.global_transform.basis.inverse()
-	var target_local_basis = skeleton_global_basis_inv * target_basis
+	# Apply bone weight to rotation
+	rotation_angle *= bone_weight * aim_ik_weight
 
-	# Create new pose with target rotation but keeping IK position
-	var new_pose = Transform3D(target_local_basis, current_pose.origin)
+	# Create delta rotation
+	var delta_rotation = Basis(rotation_axis, rotation_angle)
 
-	# Apply the new pose to the hand bone
-	skeleton.set_bone_global_pose_override(right_hand_bone_id, new_pose, 1.0, true)
+	# Apply rotation to bone in global space
+	var new_basis = delta_rotation * bone_global_transform.basis
+
+	# Convert back to bone local space
+	var parent_id = skeleton.get_bone_parent(bone_id)
+	if parent_id >= 0:
+		var parent_global_transform = skeleton.global_transform * skeleton.get_bone_global_pose(parent_id)
+		var parent_inv = parent_global_transform.affine_inverse()
+		var local_transform = parent_inv * Transform3D(new_basis, bone_global_transform.origin)
+		skeleton.set_bone_pose_rotation(bone_id, local_transform.basis.get_rotation_quaternion())
+	else:
+		# No parent, use skeleton inverse
+		var skeleton_inv = skeleton.global_transform.affine_inverse()
+		var local_transform = skeleton_inv * Transform3D(new_basis, bone_global_transform.origin)
+		skeleton.set_bone_pose_rotation(bone_id, local_transform.basis.get_rotation_quaternion())
+
+func _apply_spine_aiming():
+	"""Apply spine bone rotations to aim weapon at camera target"""
+	if not aim_ik_enabled or not equipped_weapon or not skeleton:
+		return
+
+	# Get constrained target position
+	var target_pos = _get_constrained_aim_target()
+
+	# List of bones to rotate (in order from bottom to top)
+	var aim_bones = []
+	if spine_bone_id >= 0:
+		aim_bones.append({"id": spine_bone_id, "weight": spine_bone_weights["Spine"]})
+	if chest_bone_id >= 0:
+		aim_bones.append({"id": chest_bone_id, "weight": spine_bone_weights["Chest"]})
+	if upper_chest_bone_id >= 0:
+		aim_bones.append({"id": upper_chest_bone_id, "weight": spine_bone_weights["Upper_Chest"]})
+
+	# Apply aiming with multiple iterations for accuracy
+	for iteration in range(aim_ik_iterations):
+		for bone_data in aim_bones:
+			_aim_bone_at_target(bone_data["id"], target_pos, bone_data["weight"])
 
 func _process(_delta):
 	# WEAPON UPDATE ORDER - CRITICAL for proper IK-based positioning:
@@ -2002,6 +2095,6 @@ func _process(_delta):
 				right_foot_ik.stop()
 
 	# STEP 3: Weapon automatically follows hand bone (parented to BoneAttachment3D)
-	# After IK is applied, rotate hand bone to grip weapon toward camera direction
+	# After IK is applied, rotate spine bones to aim weapon at camera target
 	if equipped_weapon:
-		_orient_hand_for_weapon_grip()
+		_apply_spine_aiming()
