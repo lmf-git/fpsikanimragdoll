@@ -96,7 +96,7 @@ var sway_time: float = 0.0  # Time accumulator for sway
 var current_sway: Vector3 = Vector3.ZERO  # Current sway offset
 
 # Weapon recoil
-@export var recoil_rotation: Vector3 = Vector3(-5.0, 0.0, 0.0)  # Rotation recoil in degrees (pitch, yaw, roll)
+@export var recoil_rotation: Vector3 = Vector3(5.0, 0.0, 0.0)  # Rotation recoil in degrees (pitch, yaw, roll)
 @export var recoil_position: Vector3 = Vector3(0.0, 0.0, 0.05)  # Position recoil (backward push)
 @export var recoil_recovery_speed: float = 10.0  # How fast recoil returns to normal
 var current_recoil_rotation: Vector3 = Vector3.ZERO  # Current recoil rotation offset
