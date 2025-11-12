@@ -1463,21 +1463,22 @@ func _trigger_muzzle_flash():
 	print("Muzzle flash at ", flash_position)
 
 func _play_gunshot_sound():
-	"""Play simple gunshot sound"""
+	"""Play explosive gunshot sound with heavy bass"""
 	if not equipped_weapon:
 		return
 
 	# Create audio player if it doesn't exist
 	if not gunshot_audio:
 		gunshot_audio = AudioStreamPlayer3D.new()
-		gunshot_audio.max_distance = 50.0
-		gunshot_audio.unit_size = 10.0  # Very loud
+		gunshot_audio.max_distance = 100.0  # Louder, travels further
+		gunshot_audio.unit_size = 15.0  # Much louder
+		gunshot_audio.volume_db = 5.0  # Boost volume
 		add_child(gunshot_audio)
 
-	# Create simple gunshot using AudioStreamGenerator
+	# Create explosive gunshot using AudioStreamGenerator
 	var generator = AudioStreamGenerator.new()
-	generator.mix_rate = 22050.0  # Lower rate for simpler sound
-	generator.buffer_length = 0.2
+	generator.mix_rate = 16000.0  # Lower for deeper bass
+	generator.buffer_length = 0.3  # Longer for more boom
 
 	gunshot_audio.stream = generator
 	gunshot_audio.global_position = equipped_weapon.global_position
@@ -1487,7 +1488,7 @@ func _play_gunshot_sound():
 	_fill_gunshot_buffer.call_deferred()
 
 func _fill_gunshot_buffer():
-	"""Fill the audio buffer with gunshot sound"""
+	"""Fill the audio buffer with explosive gunshot sound"""
 	if not gunshot_audio:
 		return
 
@@ -1495,34 +1496,55 @@ func _fill_gunshot_buffer():
 	if not playback:
 		return
 
-	# Generate realistic gunshot: sharp attack with filtered noise
-	var samples = 2205  # 0.1s at 22050Hz
+	# Generate explosive gunshot: 0.25s at 16000Hz
+	var samples = 4000
+	var mix_rate = 16000.0
 
-	# Simple low-pass filter state
-	var filtered_sample = 0.0
-	var filter_alpha = 0.3
+	# Filter states for bass layers
+	var bass_filter = 0.0
+	var sub_bass_filter = 0.0
 
 	for i in range(samples):
 		var t = float(i) / float(samples)
+		var time_seconds = float(i) / mix_rate
 
-		# Very sharp attack, quick decay for realistic gunshot
-		var env = exp(-t * 25.0)  # Sharp decay
+		# Multi-stage envelope for explosive sound
+		var attack_env = 1.0 - exp(-t * 200.0)  # Very fast attack
+		var decay_env = exp(-t * 8.0)  # Slower decay for more boom
+		var sustain_env = exp(-t * 3.5)  # Even slower sub-bass rumble
 
-		# Generate white noise and low-pass filter it for bass
+		# LAYER 1: Sub-bass explosion (very low frequency)
+		var sub_bass_freq = 40.0 + (60.0 * exp(-t * 15.0))  # 40-100Hz sweep down
+		var sub_bass = sin(time_seconds * sub_bass_freq * TAU) * sustain_env * 0.6
+
+		# LAYER 2: Bass thump (low frequency)
+		var bass_freq = 80.0 + (120.0 * exp(-t * 12.0))  # 80-200Hz sweep down
+		var bass_thump = sin(time_seconds * bass_freq * TAU) * decay_env * 0.5
+
+		# LAYER 3: Mid crack (sharp attack)
 		var noise = (randf() * 2.0 - 1.0)
-		filtered_sample = filter_alpha * noise + (1.0 - filter_alpha) * filtered_sample
-
-		# Initial sharp crack (first 5% of sound)
 		var crack = 0.0
-		if t < 0.05:
-			crack = noise * (1.0 - t / 0.05) * 0.8
+		if t < 0.08:  # First 8%
+			crack = noise * (1.0 - t / 0.08) * attack_env * 0.7
 
-		# Mix filtered bass noise with sharp crack
-		var sample = (filtered_sample * 0.7 + crack) * env
+		# LAYER 4: Bass noise (filtered white noise)
+		bass_filter = 0.15 * noise + 0.85 * bass_filter  # Heavy low-pass
+		var bass_noise = bass_filter * decay_env * 0.4
+
+		# LAYER 5: Sub-bass noise (even more filtered)
+		sub_bass_filter = 0.05 * noise + 0.95 * sub_bass_filter  # Extreme low-pass
+		var sub_noise = sub_bass_filter * sustain_env * 0.3
+
+		# Mix all layers with emphasis on bass
+		var sample = sub_bass + bass_thump + crack + bass_noise + sub_noise
+
+		# Soft clipping for natural distortion (like real gunshot)
+		sample = tanh(sample * 1.5)  # Overdrive for punch
 		sample = clamp(sample, -1.0, 1.0)
+
 		playback.push_frame(Vector2(sample, sample))
 
-	print("Gunshot sound: BANG!")
+	print("Gunshot sound: BOOM!")
 
 func _apply_recoil():
 	"""Apply recoil to camera and weapon"""
