@@ -1098,9 +1098,6 @@ func _physics_process(delta):
 	# Update recoil recovery
 	_update_recoil(delta)
 
-	# Update crosshair position
-	_update_crosshair()
-
 	# Detect nearby weapons for pickup
 	_detect_nearby_weapon()
 
