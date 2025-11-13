@@ -1116,13 +1116,9 @@ func _update_head_look(delta):
 		deg_to_rad(-max_head_rotation_y),
 		deg_to_rad(max_head_rotation_y))
 
-	# Adjust head pitch based on weapon state
+	# Head pitch is always enabled (no spine rotation to conflict with)
+	# Camera-relative IK handles weapon aiming, head rotation is purely visual
 	var pitch_multiplier = 1.0
-	if equipped_weapon and weapon_state == WeaponState.AIMING:
-		# When actively aiming (ADS), disable head pitch entirely - spine handles vertical aim
-		# This prevents double rotation (spine + head) causing camera/body distortion
-		pitch_multiplier = 0.0
-	# When weapon ready but not aiming, allow normal head movement (spine not rotating)
 
 	# Apply rotation to neck (contributes to yaw and some pitch)
 	if neck_bone_id >= 0:
@@ -2244,19 +2240,17 @@ func _process(_delta):
 		_update_head_look(get_process_delta_time())
 
 	# STEP 4: Weapon automatically follows hand bone (parented to BoneAttachment3D)
-	# After head and IK, rotate spine bones to aim weapon at camera target
-	# Only activate spine aiming when actively aiming down sights to prevent:
-	# - Camera lowering when weapon first equipped
-	# - Upper body distortion from premature spine rotation
-	var should_aim_spine = equipped_weapon and weapon_state == WeaponState.AIMING
+	# DISABLED: Spine aiming causes head/camera to move down when aiming
+	# The camera-relative IK positioning is sufficient for accurate aiming
+	# Spine rotation affects entire upper body including head (Spine → Chest → Upper_Chest → Neck → Head)
 
-	if should_aim_spine:
-		_apply_spine_aiming()
+	# Reset spine bone rotation to prevent any leftover rotation
+	if spine_bone_id >= 0 and skeleton:
+		skeleton.set_bone_pose_rotation(spine_bone_id, Quaternion.IDENTITY)
+
+	# Apply hand rotation for proper weapon grip when aiming
+	if equipped_weapon and weapon_state == WeaponState.AIMING:
 		_rotate_hand_to_grip_weapon()
-	else:
-		# Reset spine bone rotation when not aiming to prevent head staying broken
-		if spine_bone_id >= 0 and skeleton:
-			skeleton.set_bone_pose_rotation(spine_bone_id, Quaternion.IDENTITY)
 
 	# STEP 5: Update crosshair spread and position
 	_update_crosshair(_delta)
