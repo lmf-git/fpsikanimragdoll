@@ -1825,9 +1825,9 @@ func _update_weapon_ik_targets():
 		WeaponState.AIMING:
 			target_offset = aim_weapon_offset
 
-	# In FPS mode or when aiming, use camera-relative positioning for accurate aim
-	# In TPS mode without aiming, use body-relative positioning
-	var use_camera_relative = (camera_mode == 0) or (weapon_state == WeaponState.AIMING)
+	# Use camera-relative positioning ONLY when actively aiming for precise aim
+	# When weapon ready but not aiming, use body-relative for natural pose
+	var use_camera_relative = (weapon_state == WeaponState.AIMING)
 
 	var positioning_basis: Basis
 	if use_camera_relative:
