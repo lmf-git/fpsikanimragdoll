@@ -1895,8 +1895,8 @@ func _update_weapon_ik_targets():
 				# - No left/right offset (centerline)
 				var foregrip_offset = Vector3(0.0, 0.05, -0.35)  # Higher and forward
 
-				# Apply body-relative offset
-				var left_hand_pos = right_hand_pos + body_basis * foregrip_offset
+				# Apply positioning basis offset (camera-relative in FPS/ADS)
+				var left_hand_pos = right_hand_pos + positioning_basis * foregrip_offset
 				left_hand_target.global_position = left_hand_pos
 		else:
 			# Pistol (one-handed): Left hand only supports when aiming, not during hip fire
@@ -1910,7 +1910,7 @@ func _update_weapon_ik_targets():
 				# - Right: 0.03m to the right (crosses under) to create elbow bend
 				var support_grip_offset = Vector3(0.03, -0.08, -0.05)  # Right, down, forward
 
-				var left_hand_pos = right_hand_pos + body_basis * support_grip_offset
+				var left_hand_pos = right_hand_pos + positioning_basis * support_grip_offset
 				left_hand_target.global_position = left_hand_pos
 			else:
 				# When hip firing (READY) or sheathed, left hand goes to rest position (one-handed grip)
