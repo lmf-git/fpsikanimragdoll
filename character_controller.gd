@@ -1839,9 +1839,17 @@ func _update_weapon_ik_targets():
 		WeaponState.AIMING:
 			target_offset = aim_weapon_offset
 
-	# Create body-relative basis for hand positioning
-	# Hands stay relative to body - spine bones will rotate to aim
-	var body_basis = Basis(Vector3.UP, body_rotation_y)
+	# In FPS mode or when aiming, use camera-relative positioning for accurate aim
+	# In TPS mode without aiming, use body-relative positioning
+	var use_camera_relative = (camera_mode == 0) or (weapon_state == WeaponState.AIMING)
+
+	var positioning_basis: Basis
+	if use_camera_relative:
+		# Camera-relative: Gun points exactly where you're looking
+		positioning_basis = active_camera.global_transform.basis
+	else:
+		# Body-relative: Gun follows body rotation
+		positioning_basis = Basis(Vector3.UP, body_rotation_y)
 
 	# Position right hand IK target relative to body
 	var right_hand_target = ik_targets_node.get_node_or_null("RightHandTarget")
@@ -1858,7 +1866,7 @@ func _update_weapon_ik_targets():
 
 		# Apply hand recoil to offset
 		var final_offset = base_offset + current_hand_recoil
-		var target_pos = anchor_transform.origin + body_basis * final_offset
+		var target_pos = anchor_transform.origin + positioning_basis * final_offset
 
 		# DEBUG: Track target movement when state changes
 		if weapon_state == WeaponState.AIMING and right_hand_target.global_position.distance_to(target_pos) > 0.01:
@@ -1919,13 +1927,13 @@ func _update_weapon_ik_targets():
 		# Position right elbow pole to guide elbow to bend outward
 		# Place it to the right and slightly forward of the hand target
 		var elbow_offset = Vector3(0.2, 0.0, -0.2)  # Right and forward
-		right_elbow_pole.global_position = right_hand_target.global_position + body_basis * elbow_offset
+		right_elbow_pole.global_position = right_hand_target.global_position + positioning_basis * elbow_offset
 
 	if left_hand_target and left_elbow_pole:
 		# Position left elbow pole to guide elbow to bend outward
 		# Place it to the left and slightly forward of the hand target
 		var elbow_offset = Vector3(-0.2, 0.0, -0.2)  # Left and forward
-		left_elbow_pole.global_position = left_hand_target.global_position + body_basis * elbow_offset
+		left_elbow_pole.global_position = left_hand_target.global_position + positioning_basis * elbow_offset
 
 	# Update wrist pole positions for refined hand/wrist control
 	var left_wrist_pole = ik_targets_node.get_node_or_null("LeftWristPole")
@@ -1935,12 +1943,12 @@ func _update_weapon_ik_targets():
 		# Position right wrist pole closer to hand, slightly down and outward
 		# This helps guide the wrist orientation for proper weapon grip
 		var wrist_offset = Vector3(0.1, -0.05, -0.1)  # Slightly right, down, and forward
-		right_wrist_pole.global_position = right_hand_target.global_position + body_basis * wrist_offset
+		right_wrist_pole.global_position = right_hand_target.global_position + positioning_basis * wrist_offset
 
 	if left_hand_target and left_wrist_pole:
 		# Position left wrist pole for support hand positioning
 		var wrist_offset = Vector3(-0.1, -0.05, -0.1)  # Slightly left, down, and forward
-		left_wrist_pole.global_position = left_hand_target.global_position + body_basis * wrist_offset
+		left_wrist_pole.global_position = left_hand_target.global_position + positioning_basis * wrist_offset
 
 func _update_weapon_to_hand():
 	"""Position weapon to follow IK-transformed hand bone (called AFTER IK is applied)"""
@@ -2139,17 +2147,8 @@ func _apply_spine_aiming():
 	# Get camera's forward direction (where it's looking)
 	var camera_forward = -camera.global_transform.basis.z
 
-	# Flatten to horizontal plane only (yaw rotation only, no pitch)
-	# This prevents head/camera from lowering when looking down
-	camera_forward.y = 0.0
-	if camera_forward.length_squared() < 0.0001:
-		return  # Looking straight up/down, can't determine horizontal direction
-	camera_forward = camera_forward.normalized()
-
 	# Apply angle constraint - don't aim too far back or to sides
 	var body_forward = -global_transform.basis.z
-	body_forward.y = 0.0  # Also flatten body forward for fair comparison
-	body_forward = body_forward.normalized()
 
 	var angle_to_camera = rad_to_deg(acos(clamp(body_forward.dot(camera_forward), -1.0, 1.0)))
 
@@ -2159,7 +2158,7 @@ func _apply_spine_aiming():
 		blend_weight = 1.0 - ((angle_to_camera - aim_angle_limit) / aim_angle_limit)
 		blend_weight = clamp(blend_weight, 0.0, 1.0)
 
-	# Calculate final aim direction (horizontal only)
+	# Calculate final aim direction (full 3D with camera-relative IK)
 	var aim_direction = camera_forward.lerp(body_forward, 1.0 - blend_weight).normalized()
 
 	# Only rotate spine bone - chest/upper_chest are parents of neck/head
