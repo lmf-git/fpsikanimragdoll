@@ -1986,9 +1986,19 @@ func _aim_bone_toward_direction(bone_id: int, aim_direction: Vector3, bone_weigh
 	if bone_id < 0 or not skeleton:
 		return
 
-	# Get bone's current global pose
-	var bone_global_pose = skeleton.get_bone_global_pose(bone_id)
-	var bone_global_transform = skeleton.global_transform * bone_global_pose
+	# Reset bone to rest pose first to avoid accumulation
+	skeleton.set_bone_pose_rotation(bone_id, Quaternion.IDENTITY)
+
+	# Get bone's rest pose and calculate global transform
+	var bone_rest = skeleton.get_bone_rest(bone_id)
+	var parent_id = skeleton.get_bone_parent(bone_id)
+
+	var bone_global_transform: Transform3D
+	if parent_id >= 0:
+		var parent_global = skeleton.global_transform * skeleton.get_bone_global_pose(parent_id)
+		bone_global_transform = parent_global * bone_rest
+	else:
+		bone_global_transform = skeleton.global_transform * bone_rest
 
 	# Get bone's current forward direction (in global space)
 	# Spine bones typically point upward, so we use +Y as their "forward"
@@ -2012,7 +2022,6 @@ func _aim_bone_toward_direction(bone_id: int, aim_direction: Vector3, bone_weigh
 	var new_basis = delta_rotation * bone_global_transform.basis
 
 	# Convert back to bone local space
-	var parent_id = skeleton.get_bone_parent(bone_id)
 	if parent_id >= 0:
 		var parent_global_transform = skeleton.global_transform * skeleton.get_bone_global_pose(parent_id)
 		var parent_inv = parent_global_transform.affine_inverse()
@@ -2095,20 +2104,11 @@ func _apply_spine_aiming():
 	# Calculate final aim direction
 	var aim_direction = camera_forward.lerp(body_forward, 1.0 - blend_weight).normalized()
 
-	# List of bones to rotate (in order from bottom to top)
-	var aim_bones = []
+	# Only rotate spine bone - chest/upper_chest are parents of neck/head
 	if spine_bone_id >= 0:
-		aim_bones.append({"id": spine_bone_id, "weight": spine_bone_weights["Spine"]})
-	# Don't rotate chest/upper_chest - they're parents of neck/head, rotating them displaces head
-	# if chest_bone_id >= 0:
-	#     aim_bones.append({"id": chest_bone_id, "weight": spine_bone_weights["Chest"]})
-	# if upper_chest_bone_id >= 0:
-	#     aim_bones.append({"id": upper_chest_bone_id, "weight": spine_bone_weights["Upper_Chest"]})
-
-	# Apply aiming with multiple iterations for accuracy
-	for iteration in range(aim_ik_iterations):
-		for bone_data in aim_bones:
-			_aim_bone_toward_direction(bone_data["id"], aim_direction, bone_data["weight"])
+		# Apply rotation only once (not multiple iterations)
+		# Multiple iterations are for IK solving, not needed for direct bone rotation
+		_aim_bone_toward_direction(spine_bone_id, aim_direction, spine_bone_weights["Spine"])
 
 func _process(_delta):
 	# WEAPON UPDATE ORDER - CRITICAL for proper IK-based positioning:
