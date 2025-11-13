@@ -1418,22 +1418,6 @@ func pickup_weapon(weapon: Weapon):
 		equipped_weapon = weapon
 		nearby_weapon = null
 
-		# Debug: Verify weapon attachment
-		print("DEBUG: Weapon equipped!")
-		if right_hand_attachment:
-			print("  BoneAttachment position: ", right_hand_attachment.global_position)
-		else:
-			print("  BoneAttachment position: NULL")
-		if equipped_weapon.get_parent():
-			print("  Weapon parent: ", equipped_weapon.get_parent().name)
-		else:
-			print("  Weapon parent: NULL")
-		print("  Weapon global position: ", equipped_weapon.global_position)
-		print("  Weapon local position: ", equipped_weapon.position)
-		if skeleton and right_hand_bone_id >= 0:
-			var hand_bone_global = skeleton.global_transform * skeleton.get_bone_global_pose(right_hand_bone_id)
-			print("  Hand bone global position: ", hand_bone_global.origin)
-
 		# Weapon is now parented to hand bone and will automatically follow IK transforms
 
 func _shoot_weapon():
@@ -1872,10 +1856,6 @@ func _update_weapon_ik_targets():
 		var final_offset = base_offset + current_hand_recoil
 		var target_pos = anchor_transform.origin + positioning_basis * final_offset
 
-		# DEBUG: Track target movement when state changes
-		if weapon_state == WeaponState.AIMING and right_hand_target.global_position.distance_to(target_pos) > 0.01:
-			print("AIMING: Moving hand target from ", right_hand_target.global_position, " to ", target_pos)
-
 		right_hand_target.global_position = target_pos
 
 	# Update left hand IK target ONLY for two-handed weapons (rifles)
@@ -1957,18 +1937,14 @@ func _update_weapon_ik_targets():
 func _update_weapon_to_hand():
 	"""Position weapon to follow IK-transformed hand bone (called AFTER IK is applied)"""
 	if not equipped_weapon:
-		print("DEBUG: _update_weapon_to_hand() - no equipped_weapon")
 		return
 	if not skeleton:
-		print("DEBUG: _update_weapon_to_hand() - no skeleton")
 		return
 	if right_hand_bone_id < 0:
-		print("DEBUG: _update_weapon_to_hand() - invalid right_hand_bone_id: ", right_hand_bone_id)
 		return
 
 	# Get the IK-transformed hand bone transform
 	var right_hand_transform = skeleton.global_transform * skeleton.get_bone_global_pose(right_hand_bone_id)
-	print("DEBUG: _update_weapon_to_hand() - hand transform: ", right_hand_transform.origin)
 
 	# STEP 1: Position weapon so grip point aligns with hand bone origin
 	# This must be done FIRST, before applying any rotation offsets
@@ -1999,11 +1975,9 @@ func _update_weapon_to_hand():
 		# Recalculate position after rotation (rotation happens around grip point)
 		grip_world_offset = equipped_weapon.global_transform.basis * grip_local_pos
 		equipped_weapon.global_position = right_hand_transform.origin - grip_world_offset
-		print("DEBUG: Set weapon position to: ", equipped_weapon.global_position)
 	else:
 		# Fallback: if no grip point, just match hand transform
 		equipped_weapon.global_transform = right_hand_transform
-		print("DEBUG: No main_grip, set weapon transform to hand transform")
 
 func _get_constrained_aim_target() -> Vector3:
 	"""Calculate aim target position with angle and distance constraints"""
