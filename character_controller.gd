@@ -180,6 +180,8 @@ var mesh_instance: MeshInstance3D
 @export var aim_ik_iterations: int = 3
 @export_range(0.0, 1.0) var aim_ik_weight: float = 1.0
 @export var aim_angle_limit: float = 90.0  # Maximum aim angle in degrees
+@export var max_spine_pitch_up: float = 45.0  # Maximum spine pitch up in degrees
+@export var max_spine_pitch_down: float = 45.0  # Maximum spine pitch down in degrees
 @export var aim_distance_limit: float = 1.5  # Minimum aim distance
 @export var aim_target_offset: Vector3 = Vector3(0.0, 1.36, 0.0)  # Offset to aim at (e.g., chest height)
 
@@ -2083,25 +2085,25 @@ func _rotate_hand_to_grip_weapon():
 	var hand_global_transform = skeleton.global_transform * hand_global_pose
 
 	# Create target rotation for hand to grip weapon
-	# Hand should point forward along camera direction
-	# Palm should face inward/left (toward body)
-	var hand_forward = camera_forward
-	var hand_up = camera_up
+	# For proper gun grip (right hand):
+	# - Fingers wrap around grip (pointing down/forward)
+	# - Palm faces LEFT (inward toward body)
+	# - Thumb points UP along the side of the weapon
 
-	# For right hand gripping pistol:
-	# - Forward (-Z) should point along camera forward
-	# - Up (+Y) should generally face up
-	# - Right (+X) should point right (thumb side)
+	# Build weapon-aligned basis
+	var weapon_forward = camera_forward  # Weapon points where camera looks
+	var weapon_up = camera_up
+	var weapon_right = weapon_up.cross(weapon_forward).normalized()
+	weapon_up = weapon_forward.cross(weapon_right).normalized()
 
-	# Create orthonormal basis
-	var hand_right = hand_up.cross(hand_forward).normalized()
-	hand_up = hand_forward.cross(hand_right).normalized()
-
-	# Build target basis for hand
+	# For right hand gripping gun:
+	# - Hand forward (fingers direction) should point along weapon forward
+	# - Palm should face LEFT (weapon_left = -weapon_right)
+	# - Thumb should point UP (weapon_up)
 	var target_basis = Basis()
-	target_basis.x = hand_right
-	target_basis.y = hand_up
-	target_basis.z = -hand_forward  # Godot uses -Z as forward
+	target_basis.z = -weapon_forward  # Hand -Z points forward (Godot convention)
+	target_basis.x = -weapon_right    # Hand +X (palm side) faces LEFT (inward)
+	target_basis.y = weapon_up        # Hand +Y (thumb side) points UP
 
 	# Convert to bone local space
 	var parent_id = skeleton.get_bone_parent(right_hand_bone_id)
@@ -2134,8 +2136,26 @@ func _apply_spine_aiming():
 		blend_weight = 1.0 - ((angle_to_camera - aim_angle_limit) / aim_angle_limit)
 		blend_weight = clamp(blend_weight, 0.0, 1.0)
 
-	# Calculate final aim direction (full 3D with camera-relative IK)
+	# Calculate aim direction with horizontal constraint
 	var aim_direction = camera_forward.lerp(body_forward, 1.0 - blend_weight).normalized()
+
+	# Apply vertical pitch constraints to prevent spine flipping
+	# Get the pitch (vertical angle) of the aim direction
+	var horizontal_forward = Vector3(aim_direction.x, 0, aim_direction.z).normalized()
+	if horizontal_forward.length_squared() > 0.01:  # Avoid division by zero
+		var current_pitch = rad_to_deg(atan2(-aim_direction.y, horizontal_forward.length()))
+
+		# Clamp pitch to limits
+		var clamped_pitch = clamp(current_pitch, -max_spine_pitch_down, max_spine_pitch_up)
+
+		# Reconstruct aim direction with clamped pitch
+		var pitch_radians = deg_to_rad(clamped_pitch)
+		var horizontal_length = cos(pitch_radians)
+		aim_direction = Vector3(
+			horizontal_forward.x * horizontal_length,
+			-sin(pitch_radians),
+			horizontal_forward.z * horizontal_length
+		).normalized()
 
 	# Only rotate spine bone - chest/upper_chest are parents of neck/head
 	if spine_bone_id >= 0:
