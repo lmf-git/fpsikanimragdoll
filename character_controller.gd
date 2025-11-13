@@ -116,9 +116,22 @@ var gunshot_audio: AudioStreamPlayer3D = null
 
 # Crosshair UI
 var crosshair_ui: Control = null
-var crosshair_dot: ColorRect = null
-@export var crosshair_size: float = 4.0  # Size of crosshair dot in pixels
+var crosshair_lines: Array[ColorRect] = []  # 4 lines for COD-style cross
+@export var crosshair_gap: float = 8.0  # Gap from center
+@export var crosshair_length: float = 12.0  # Length of each line
+@export var crosshair_thickness: float = 2.0  # Thickness of lines
 @export var crosshair_color: Color = Color(1.0, 1.0, 1.0, 0.8)  # White with slight transparency
+
+# Dynamic crosshair spread
+var current_spread: float = 0.0  # Current spread amount
+var base_spread: float = 0.0  # Base spread (min)
+@export var max_spread: float = 40.0  # Maximum spread expansion
+@export var spread_increase_per_shot: float = 8.0  # How much spread increases per shot
+@export var spread_recovery_rate: float = 30.0  # How fast spread recovers per second
+
+# Weapon firing
+var is_firing: bool = false  # Holding fire button
+var last_shot_time: float = 0.0
 
 # Ragdoll bone configuration - bones that will have physics
 const RAGDOLL_BONES = [
@@ -275,7 +288,7 @@ func find_mesh_instance(node: Node) -> MeshInstance3D:
 	return null
 
 func _create_crosshair_ui():
-	"""Create crosshair UI overlay"""
+	"""Create COD-style crosshair UI with 4 expanding lines"""
 	# Create a CanvasLayer to hold the UI
 	var canvas_layer = CanvasLayer.new()
 	canvas_layer.name = "CrosshairLayer"
@@ -288,64 +301,90 @@ func _create_crosshair_ui():
 	crosshair_ui.mouse_filter = Control.MOUSE_FILTER_IGNORE  # Don't intercept mouse events
 	canvas_layer.add_child(crosshair_ui)
 
-	# Create crosshair dot (ColorRect for simple dot)
-	crosshair_dot = ColorRect.new()
-	crosshair_dot.name = "CrosshairDot"
-	crosshair_dot.color = crosshair_color
-	crosshair_dot.size = Vector2(crosshair_size, crosshair_size)
-	crosshair_dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	crosshair_ui.add_child(crosshair_dot)
-
-	# Start at screen center
 	var viewport_size = get_viewport().get_visible_rect().size
-	crosshair_dot.position = viewport_size / 2.0 - crosshair_dot.size / 2.0
+	var center = viewport_size / 2.0
 
-	print("Crosshair UI created")
+	# Create 4 lines for COD-style crosshair (top, bottom, left, right)
+	# Top line
+	var top_line = ColorRect.new()
+	top_line.color = crosshair_color
+	top_line.size = Vector2(crosshair_thickness, crosshair_length)
+	top_line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	crosshair_ui.add_child(top_line)
+	crosshair_lines.append(top_line)
 
-func _update_crosshair():
-	"""Update crosshair position to match weapon barrel direction"""
-	if not crosshair_dot or not equipped_weapon:
-		# No weapon equipped - hide crosshair or keep it at center
-		if crosshair_dot:
-			crosshair_dot.visible = false
+	# Bottom line
+	var bottom_line = ColorRect.new()
+	bottom_line.color = crosshair_color
+	bottom_line.size = Vector2(crosshair_thickness, crosshair_length)
+	bottom_line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	crosshair_ui.add_child(bottom_line)
+	crosshair_lines.append(bottom_line)
+
+	# Left line
+	var left_line = ColorRect.new()
+	left_line.color = crosshair_color
+	left_line.size = Vector2(crosshair_length, crosshair_thickness)
+	left_line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	crosshair_ui.add_child(left_line)
+	crosshair_lines.append(left_line)
+
+	# Right line
+	var right_line = ColorRect.new()
+	right_line.color = crosshair_color
+	right_line.size = Vector2(crosshair_length, crosshair_thickness)
+	right_line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	crosshair_ui.add_child(right_line)
+	crosshair_lines.append(right_line)
+
+	# Position lines at center with gap
+	_update_crosshair_positions(center, base_spread)
+
+	print("COD-style crosshair UI created")
+
+func _update_crosshair_positions(center: Vector2, spread: float):
+	"""Update crosshair line positions based on spread"""
+	if crosshair_lines.size() < 4:
+		return
+
+	var gap_with_spread = crosshair_gap + spread
+
+	# Top line (index 0)
+	crosshair_lines[0].position = Vector2(center.x - crosshair_thickness / 2.0, center.y - gap_with_spread - crosshair_length)
+
+	# Bottom line (index 1)
+	crosshair_lines[1].position = Vector2(center.x - crosshair_thickness / 2.0, center.y + gap_with_spread)
+
+	# Left line (index 2)
+	crosshair_lines[2].position = Vector2(center.x - gap_with_spread - crosshair_length, center.y - crosshair_thickness / 2.0)
+
+	# Right line (index 3)
+	crosshair_lines[3].position = Vector2(center.x + gap_with_spread, center.y - crosshair_thickness / 2.0)
+
+func _update_crosshair(delta: float):
+	"""Update crosshair spread and visibility"""
+	if crosshair_lines.size() == 0:
+		return
+
+	# Hide crosshair when no weapon equipped
+	if not equipped_weapon:
+		for line in crosshair_lines:
+			line.visible = false
 		return
 
 	# Show crosshair when weapon is equipped
-	crosshair_dot.visible = true
+	for line in crosshair_lines:
+		line.visible = true
 
-	# Get camera
-	var camera = fps_camera if camera_mode == 0 else tps_camera
-	if not camera:
-		return
+	# Recover spread over time
+	if current_spread > base_spread:
+		current_spread -= spread_recovery_rate * delta
+		current_spread = max(current_spread, base_spread)
 
-	# If weapon has a muzzle point, raycast from there to find where it's aiming
-	var aim_point_3d: Vector3
-	if equipped_weapon.muzzle_point:
-		# Raycast from muzzle in the direction the barrel is pointing
-		var muzzle_pos = equipped_weapon.muzzle_point.global_position
-		var muzzle_forward = -equipped_weapon.muzzle_point.global_transform.basis.z
-
-		# Perform raycast to find hit point
-		var space_state = get_world_3d().direct_space_state
-		var query = PhysicsRayQueryParameters3D.create(muzzle_pos, muzzle_pos + muzzle_forward * 100.0)
-		query.exclude = [self, equipped_weapon]
-		query.collide_with_bodies = true
-		var result = space_state.intersect_ray(query)
-
-		if result:
-			aim_point_3d = result.position
-		else:
-			# No hit - use far point along barrel direction
-			aim_point_3d = muzzle_pos + muzzle_forward * 100.0
-	else:
-		# No muzzle point - use camera forward
-		aim_point_3d = camera.global_position + (-camera.global_transform.basis.z * 100.0)
-
-	# Project 3D point to 2D screen space
-	var screen_pos = camera.unproject_position(aim_point_3d)
-
-	# Position crosshair dot at screen position (centered on the dot)
-	crosshair_dot.position = screen_pos - crosshair_dot.size / 2.0
+	# Update crosshair positions with current spread
+	var viewport_size = get_viewport().get_visible_rect().size
+	var center = viewport_size / 2.0
+	_update_crosshair_positions(center, current_spread)
 
 func _create_ik_system():
 	"""Create SkeletonIK3D nodes at runtime and link them to targets"""
@@ -766,11 +805,15 @@ func _input(event):
 		elif nearby_weapon:
 			pickup_weapon(nearby_weapon)
 
-	# Left click for shooting
+	# Left click for shooting (press and hold for automatic fire)
 	if event is InputEventMouseButton:
-		if event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
-			if equipped_weapon:
+		if event.button_index == MOUSE_BUTTON_LEFT:
+			if event.pressed and equipped_weapon:
+				is_firing = true
+				# Fire immediately on first press
 				_shoot_weapon()
+			elif not event.pressed:
+				is_firing = false
 
 	# Right click for weapon aim
 	if event is InputEventMouseButton:
@@ -972,6 +1015,16 @@ func _update_ik_for_stance(delta):
 func _physics_process(delta):
 	if ragdoll_enabled:
 		return
+
+	# Handle automatic fire for full-auto weapons
+	if is_firing and equipped_weapon and equipped_weapon.can_shoot:
+		var current_time = Time.get_ticks_msec() / 1000.0
+		# Check if weapon is full-auto (rifle) or semi-auto (pistol)
+		var is_automatic = equipped_weapon.weapon_type == Weapon.WeaponType.RIFLE
+
+		if is_automatic and (current_time - last_shot_time) >= equipped_weapon.fire_rate:
+			_shoot_weapon()
+			last_shot_time = current_time
 
 	# Handle stance changes
 	_handle_stance_input()
@@ -1425,6 +1478,13 @@ func _shoot_weapon():
 
 	# Apply recoil
 	_apply_recoil()
+
+	# Increase crosshair spread
+	current_spread += spread_increase_per_shot
+	current_spread = min(current_spread, max_spread)
+
+	# Update last shot time
+	last_shot_time = Time.get_ticks_msec() / 1000.0
 
 	# Handle hit result
 	if hit_result.hit:
@@ -2204,3 +2264,6 @@ func _process(_delta):
 		# Reset spine bone rotation when not aiming to prevent head staying broken
 		if spine_bone_id >= 0 and skeleton:
 			skeleton.set_bone_pose_rotation(spine_bone_id, Quaternion.IDENTITY)
+
+	# STEP 5: Update crosshair spread and position
+	_update_crosshair(_delta)
