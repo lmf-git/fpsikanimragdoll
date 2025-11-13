@@ -1118,7 +1118,11 @@ func _update_head_look(delta):
 	# Spine aiming handles vertical aim, head should stay more neutral
 	var pitch_multiplier = 1.0
 	if equipped_weapon:
-		pitch_multiplier = 0.2  # Reduce head pitch by 80% when aiming
+		# When actively aiming (ADS), disable head pitch entirely - spine handles vertical aim
+		if weapon_state == WeaponState.AIMING:
+			pitch_multiplier = 0.0  # No head pitch when ADS - camera-relative IK + spine do all aiming
+		else:
+			pitch_multiplier = 0.2  # Reduce head pitch by 80% when weapon ready
 
 	# Apply rotation to neck (contributes to yaw and some pitch)
 	if neck_bone_id >= 0:
