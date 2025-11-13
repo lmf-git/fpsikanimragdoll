@@ -1116,16 +1116,24 @@ func _update_head_look(delta):
 		deg_to_rad(-max_head_rotation_y),
 		deg_to_rad(max_head_rotation_y))
 
-	# Head pitch is always enabled (no spine rotation to conflict with)
-	# Camera-relative IK handles weapon aiming, head rotation is purely visual
+	# When aiming: spine handles yaw (horizontal rotation), head only pitches (vertical)
+	# When not aiming: head handles both yaw and pitch normally
 	var pitch_multiplier = 1.0
+	var yaw_multiplier = 1.0
+
+	if equipped_weapon and weapon_state == WeaponState.AIMING:
+		# Spine rotates horizontally to keep gun centered
+		# Disable head yaw to prevent double rotation
+		yaw_multiplier = 0.0
+		# Keep pitch enabled for looking up/down
+		pitch_multiplier = 1.0
 
 	# Apply rotation to neck (contributes to yaw and some pitch)
 	if neck_bone_id >= 0:
 		var neck_pose = skeleton.get_bone_pose(neck_bone_id)
 		var neck_target = Basis()
 		# Neck contributes 40% of the yaw rotation
-		neck_target = neck_target.rotated(Vector3.UP, head_yaw * 0.4)
+		neck_target = neck_target.rotated(Vector3.UP, head_yaw * 0.4 * yaw_multiplier)
 		# Neck contributes 30% of pitch (negated due to 180° model rotation)
 		neck_target = neck_target.rotated(neck_target.x, -head_pitch * 0.3 * pitch_multiplier)
 		neck_target = neck_target * original_neck_pose.basis
@@ -1137,7 +1145,7 @@ func _update_head_look(delta):
 	var head_pose = skeleton.get_bone_pose(head_bone_id)
 	var head_target = Basis()
 	# Head contributes 60% of yaw rotation
-	head_target = head_target.rotated(Vector3.UP, head_yaw * 0.6)
+	head_target = head_target.rotated(Vector3.UP, head_yaw * 0.6 * yaw_multiplier)
 	# Head contributes 70% of pitch (negated due to 180° model rotation)
 	head_target = head_target.rotated(head_target.x, -head_pitch * 0.7 * pitch_multiplier)
 	head_target = head_target * original_head_pose.basis
@@ -2159,6 +2167,49 @@ func _apply_spine_aiming():
 		# Multiple iterations are for IK solving, not needed for direct bone rotation
 		_aim_bone_toward_direction(spine_bone_id, aim_direction, spine_bone_weights["Spine"])
 
+func _apply_spine_aiming_horizontal_only():
+	"""Apply spine rotation ONLY horizontally (yaw) to keep gun centered, NO vertical rotation"""
+	if not aim_ik_enabled or not equipped_weapon or not skeleton or spine_bone_id < 0:
+		return
+
+	var camera = fps_camera if camera_mode == 0 else tps_camera
+	if not camera:
+		return
+
+	# Get camera and body forward directions (horizontal plane only)
+	var camera_forward = -camera.global_transform.basis.z
+	var body_forward = -global_transform.basis.z
+
+	# Project onto horizontal plane (remove Y component for horizontal-only rotation)
+	var camera_forward_horizontal = Vector3(camera_forward.x, 0, camera_forward.z).normalized()
+	var body_forward_horizontal = Vector3(body_forward.x, 0, body_forward.z).normalized()
+
+	if camera_forward_horizontal.length_squared() < 0.01:
+		return  # Avoid division by zero when looking straight up/down
+
+	# Calculate yaw angle between body and camera (horizontal angle only)
+	var yaw_angle = atan2(camera_forward_horizontal.x, camera_forward_horizontal.z) - atan2(body_forward_horizontal.x, body_forward_horizontal.z)
+
+	# Normalize angle to [-PI, PI]
+	while yaw_angle > PI:
+		yaw_angle -= 2.0 * PI
+	while yaw_angle < -PI:
+		yaw_angle += 2.0 * PI
+
+	# Apply angle constraint to prevent rotating too far back
+	var max_yaw = deg_to_rad(aim_angle_limit)
+	yaw_angle = clamp(yaw_angle, -max_yaw, max_yaw)
+
+	# Apply yaw rotation to spine bone (rotation around Y axis only)
+	# This rotates upper body left/right to face camera direction
+	# But does NOT tilt forward/back, so head stays at shoulder level
+	var spine_rotation = Quaternion(Vector3.UP, yaw_angle * spine_bone_weights["Spine"] * aim_ik_weight)
+
+	# Get current spine pose and apply rotation
+	var current_pose = skeleton.get_bone_pose(spine_bone_id)
+	var new_rotation = spine_rotation * current_pose.basis.get_rotation_quaternion()
+	skeleton.set_bone_pose_rotation(spine_bone_id, new_rotation)
+
 func _process(_delta):
 	# WEAPON UPDATE ORDER - CRITICAL for proper IK-based positioning:
 	# 1. Set IK targets (where hands should go based on weapon state/aiming)
@@ -2240,17 +2291,18 @@ func _process(_delta):
 		_update_head_look(get_process_delta_time())
 
 	# STEP 4: Weapon automatically follows hand bone (parented to BoneAttachment3D)
-	# DISABLED: Spine aiming causes head/camera to move down when aiming
-	# The camera-relative IK positioning is sufficient for accurate aiming
-	# Spine rotation affects entire upper body including head (Spine → Chest → Upper_Chest → Neck → Head)
+	# Apply spine aiming when actively aiming to keep gun centered and aligned
+	# HORIZONTAL ONLY: Rotate left/right to keep gun centered in view
+	# NO VERTICAL: Don't rotate up/down to prevent head displacement
+	var should_aim_spine = equipped_weapon and weapon_state == WeaponState.AIMING
 
-	# Reset spine bone rotation to prevent any leftover rotation
-	if spine_bone_id >= 0 and skeleton:
-		skeleton.set_bone_pose_rotation(spine_bone_id, Quaternion.IDENTITY)
-
-	# Apply hand rotation for proper weapon grip when aiming
-	if equipped_weapon and weapon_state == WeaponState.AIMING:
+	if should_aim_spine:
+		_apply_spine_aiming_horizontal_only()
 		_rotate_hand_to_grip_weapon()
+	else:
+		# Reset spine bone rotation when not aiming
+		if spine_bone_id >= 0 and skeleton:
+			skeleton.set_bone_pose_rotation(spine_bone_id, Quaternion.IDENTITY)
 
 	# STEP 5: Update crosshair spread and position
 	_update_crosshair(_delta)
