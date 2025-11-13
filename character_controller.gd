@@ -1986,19 +1986,9 @@ func _aim_bone_toward_direction(bone_id: int, aim_direction: Vector3, bone_weigh
 	if bone_id < 0 or not skeleton:
 		return
 
-	# Reset bone to rest pose first to avoid accumulation
-	skeleton.set_bone_pose_rotation(bone_id, Quaternion.IDENTITY)
-
-	# Get bone's rest pose and calculate global transform
-	var bone_rest = skeleton.get_bone_rest(bone_id)
-	var parent_id = skeleton.get_bone_parent(bone_id)
-
-	var bone_global_transform: Transform3D
-	if parent_id >= 0:
-		var parent_global = skeleton.global_transform * skeleton.get_bone_global_pose(parent_id)
-		bone_global_transform = parent_global * bone_rest
-	else:
-		bone_global_transform = skeleton.global_transform * bone_rest
+	# Get bone's current global pose (includes all parent transformations)
+	var bone_global_pose = skeleton.get_bone_global_pose(bone_id)
+	var bone_global_transform = skeleton.global_transform * bone_global_pose
 
 	# Get bone's current forward direction (in global space)
 	# Spine bones typically point upward, so we use +Y as their "forward"
@@ -2022,6 +2012,7 @@ func _aim_bone_toward_direction(bone_id: int, aim_direction: Vector3, bone_weigh
 	var new_basis = delta_rotation * bone_global_transform.basis
 
 	# Convert back to bone local space
+	var parent_id = skeleton.get_bone_parent(bone_id)
 	if parent_id >= 0:
 		var parent_global_transform = skeleton.global_transform * skeleton.get_bone_global_pose(parent_id)
 		var parent_inv = parent_global_transform.affine_inverse()
