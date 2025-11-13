@@ -2082,8 +2082,18 @@ func _apply_spine_aiming():
 	# Get camera's forward direction (where it's looking)
 	var camera_forward = -camera.global_transform.basis.z
 
+	# Flatten to horizontal plane only (yaw rotation only, no pitch)
+	# This prevents head/camera from lowering when looking down
+	camera_forward.y = 0.0
+	if camera_forward.length_squared() < 0.0001:
+		return  # Looking straight up/down, can't determine horizontal direction
+	camera_forward = camera_forward.normalized()
+
 	# Apply angle constraint - don't aim too far back or to sides
 	var body_forward = -global_transform.basis.z
+	body_forward.y = 0.0  # Also flatten body forward for fair comparison
+	body_forward = body_forward.normalized()
+
 	var angle_to_camera = rad_to_deg(acos(clamp(body_forward.dot(camera_forward), -1.0, 1.0)))
 
 	# Blend toward body forward if exceeding angle limit
@@ -2092,7 +2102,7 @@ func _apply_spine_aiming():
 		blend_weight = 1.0 - ((angle_to_camera - aim_angle_limit) / aim_angle_limit)
 		blend_weight = clamp(blend_weight, 0.0, 1.0)
 
-	# Calculate final aim direction
+	# Calculate final aim direction (horizontal only)
 	var aim_direction = camera_forward.lerp(body_forward, 1.0 - blend_weight).normalized()
 
 	# Only rotate spine bone - chest/upper_chest are parents of neck/head
