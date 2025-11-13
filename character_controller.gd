@@ -1114,15 +1114,13 @@ func _update_head_look(delta):
 		deg_to_rad(-max_head_rotation_y),
 		deg_to_rad(max_head_rotation_y))
 
-	# When weapon equipped, reduce pitch to prevent head bending down too much
-	# Spine aiming handles vertical aim, head should stay more neutral
+	# Adjust head pitch based on weapon state
 	var pitch_multiplier = 1.0
-	if equipped_weapon:
+	if equipped_weapon and weapon_state == WeaponState.AIMING:
 		# When actively aiming (ADS), disable head pitch entirely - spine handles vertical aim
-		if weapon_state == WeaponState.AIMING:
-			pitch_multiplier = 0.0  # No head pitch when ADS - camera-relative IK + spine do all aiming
-		else:
-			pitch_multiplier = 0.2  # Reduce head pitch by 80% when weapon ready
+		# This prevents double rotation (spine + head) causing camera/body distortion
+		pitch_multiplier = 0.0
+	# When weapon ready but not aiming, allow normal head movement (spine not rotating)
 
 	# Apply rotation to neck (contributes to yaw and some pitch)
 	if neck_bone_id >= 0:
@@ -2227,9 +2225,10 @@ func _process(_delta):
 
 	# STEP 4: Weapon automatically follows hand bone (parented to BoneAttachment3D)
 	# After head and IK, rotate spine bones to aim weapon at camera target
-	# In FPS mode: always use spine aiming to keep gun centered in view
-	# In TPS mode: only use spine aiming when actively aiming
-	var should_aim_spine = equipped_weapon and (camera_mode == 0 or weapon_state == WeaponState.AIMING)
+	# Only activate spine aiming when actively aiming down sights to prevent:
+	# - Camera lowering when weapon first equipped
+	# - Upper body distortion from premature spine rotation
+	var should_aim_spine = equipped_weapon and weapon_state == WeaponState.AIMING
 
 	if should_aim_spine:
 		_apply_spine_aiming()
