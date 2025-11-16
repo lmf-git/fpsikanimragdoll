@@ -4,10 +4,14 @@ class_name Weapon
 # Weapon types
 enum WeaponType { PISTOL, RIFLE }
 
+# Fire modes
+enum FireMode { SEMI_AUTO, FULL_AUTO }
+
 # Weapon properties
 @export var weapon_type: WeaponType = WeaponType.PISTOL
 @export var weapon_name: String = "Weapon"
 @export var is_two_handed: bool = false
+@export var fire_mode: FireMode = FireMode.SEMI_AUTO
 
 # Grip points for IK
 @export var main_grip: Node3D  # Primary grip (right hand for pistol, dominant hand for rifle)
@@ -39,6 +43,14 @@ func _ready():
 	if not is_equipped:
 		freeze = false
 		gravity_scale = 1.0
+
+	# Auto-configure fire mode and rate based on weapon type
+	if weapon_type == WeaponType.RIFLE:
+		fire_mode = FireMode.FULL_AUTO  # Rifles are fully automatic
+		fire_rate = 0.08  # 750 RPM - fast automatic fire
+	elif weapon_type == WeaponType.PISTOL:
+		fire_mode = FireMode.SEMI_AUTO  # Pistols are semi-automatic
+		fire_rate = 0.15  # 400 RPM - slower semi-auto
 
 	# Ensure grip points are found (in case NodePath wasn't auto-resolved)
 	if not main_grip:
@@ -84,8 +96,27 @@ func shoot(from_position: Vector3, direction: Vector3) -> Dictionary:
 	# Perform raycast
 	var space_state = get_world_3d().direct_space_state
 	var query = PhysicsRayQueryParameters3D.create(ray_origin, ray_origin + direction * max_range)
-	query.exclude = [holder] if holder else []  # Don't hit the holder
-	query.collide_with_areas = true
+
+	# Build exclusion list: holder, weapon, and all IK targets
+	var exclusions = [self]  # Exclude the weapon itself
+	if holder:
+		exclusions.append(holder)  # Exclude the character
+
+		# Exclude all IK target nodes (they're on collision layer 16)
+		var ik_targets = holder.get_node_or_null("IKTargets")
+		if ik_targets:
+			for child in ik_targets.get_children():
+				exclusions.append(child)
+
+		# Exclude all physical bones (ragdoll bones) of the holder
+		var skeleton = holder.get_node_or_null("Model/Skeleton3D")
+		if skeleton:
+			for child in skeleton.get_children():
+				if child is PhysicalBone3D:
+					exclusions.append(child)
+
+	query.exclude = exclusions
+	query.collide_with_areas = false  # Don't hit IK targets even if not excluded
 	query.collide_with_bodies = true
 
 	var result = space_state.intersect_ray(query)
@@ -139,40 +170,9 @@ func equip(character: Node3D, hand_attachment: Node3D = null):
 	var attach_to = hand_attachment if hand_attachment else character
 	attach_to.add_child(self)
 
-	# Set local transform relative to hand
-	# If we have a main_grip, offset the weapon so grip aligns with hand bone origin
-	if main_grip:
-		# Get grip offset in local space
-		var grip_local_pos = main_grip.position
-
-		# No rotation - weapon orientation is correct
-		transform.basis = Basis()
-
-		# Position weapon so grip point is at hand origin (0,0,0 in hand local space)
-		# This means weapon position = -grip_offset rotated by weapon basis
-		var grip_offset_rotated = transform.basis * grip_local_pos
-		transform.origin = -grip_offset_rotated
-
-		# Add weapon-specific positioning offset for better feel
-		# After -90° pitch rotation, weapon points forward along Z-
-		# In weapon's local space: X+ = right, X- = left, Z+ = forward (toward barrel), Z- = backward
-		var weapon_offset = Vector3.ZERO
-		if weapon_type == WeaponType.PISTOL:
-			# Move pistol forward and to the left in local space
-			weapon_offset = Vector3(-0.03, 0.0, 0.08)  # 3cm left, 8cm forward
-		elif weapon_type == WeaponType.RIFLE:
-			# Rifles need more forward offset
-			weapon_offset = Vector3(-0.02, 0.0, 0.12)  # 2cm left, 12cm forward
-
-		# Apply offset in local space
-		transform.origin += weapon_offset
-
-		print("Weapon ", weapon_name, " equipped with grip offset: ", transform.origin, " (type offset applied)")
-	else:
-		# No grip point - just place at hand origin with rotation offset
-		transform.origin = Vector3(-0.03, 0.0, 0.08)  # Default pistol offset (forward and left)
-		transform.basis = Basis().rotated(Vector3.RIGHT, deg_to_rad(-90))
-		print("Weapon ", weapon_name, " equipped at hand origin (no grip point)")
+	# Reset local transform - weapon positioning is handled by _update_weapon_to_hand() in character controller
+	# which uses IK hand bone position and camera aim direction
+	transform = Transform3D.IDENTITY
 
 	print("Weapon ", weapon_name, " equipped successfully, parented to: ", attach_to.name)
 	return true
