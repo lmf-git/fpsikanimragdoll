@@ -1850,6 +1850,7 @@ func _fill_gunshot_buffer(audio_player: AudioStreamPlayer3D):
 		return
 
 	# Generate realistic gunshot with multiple frequency layers
+	var mix_rate = audio_player.stream.mix_rate
 	var samples = 4410  # 0.1s at 44100Hz
 
 	# Filter states for different frequency bands
