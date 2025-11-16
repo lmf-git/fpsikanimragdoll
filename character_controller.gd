@@ -131,9 +131,22 @@ var is_trigger_held: bool = false  # Track if left mouse button is held
 
 # Crosshair UI
 var crosshair_ui: Control = null
-var crosshair_dot: ColorRect = null
-@export var crosshair_size: float = 4.0  # Size of crosshair dot in pixels
+var crosshair_lines: Array[ColorRect] = []  # 4 lines for COD-style cross
+@export var crosshair_gap: float = 8.0  # Gap from center
+@export var crosshair_length: float = 12.0  # Length of each line
+@export var crosshair_thickness: float = 2.0  # Thickness of lines
 @export var crosshair_color: Color = Color(1.0, 1.0, 1.0, 0.8)  # White with slight transparency
+
+# Dynamic crosshair spread
+var current_spread: float = 0.0  # Current spread amount
+var base_spread: float = 0.0  # Base spread (min)
+@export var max_spread: float = 40.0  # Maximum spread expansion
+@export var spread_increase_per_shot: float = 8.0  # How much spread increases per shot
+@export var spread_recovery_rate: float = 30.0  # How fast spread recovers per second
+
+# Weapon firing
+var is_firing: bool = false  # Holding fire button
+var last_shot_time: float = 0.0
 
 # Ragdoll bone configuration - bones that will have physics
 const RAGDOLL_BONES = [
@@ -167,12 +180,32 @@ var body_rotation_y: float = 0.0  # Actual body Y rotation
 var head_bone_id: int = -1
 var neck_bone_id: int = -1
 var chest_bone_id: int = -1  # For weapon positioning anchor
+var spine_bone_id: int = -1  # For spine aiming
+var upper_chest_bone_id: int = -1  # For spine aiming
 var right_hand_bone_id: int = -1
 var left_hand_bone_id: int = -1
 var right_hand_attachment: BoneAttachment3D = null  # For attaching weapons to hand
 var original_head_pose: Transform3D
 var original_neck_pose: Transform3D
 var mesh_instance: MeshInstance3D
+
+# Spine IK aiming parameters
+@export_group("Weapon Aiming")
+@export var aim_ik_enabled: bool = true
+@export var aim_ik_iterations: int = 3
+@export_range(0.0, 1.0) var aim_ik_weight: float = 1.0
+@export var aim_angle_limit: float = 90.0  # Maximum aim angle in degrees
+@export var max_spine_pitch_up: float = 45.0  # Maximum spine pitch up in degrees
+@export var max_spine_pitch_down: float = 45.0  # Maximum spine pitch down in degrees
+@export var aim_distance_limit: float = 1.5  # Minimum aim distance
+@export var aim_target_offset: Vector3 = Vector3(0.0, 1.36, 0.0)  # Offset to aim at (e.g., chest height)
+
+# Per-bone weights for spine aiming
+var spine_bone_weights: Dictionary = {
+	"Spine": 1.0,  # Only rotate Spine bone
+	"Chest": 0.0,  # Don't rotate - Chest is parent of upper_chest/neck/head hierarchy
+	"Upper_Chest": 0.0  # Not used - upper_chest is parent of neck/head, rotating it displaces head
+}
 
 func _ready():
 	print("\n=== Character Controller Ready ===")
@@ -193,6 +226,10 @@ func _ready():
 		chest_bone_id = skeleton.find_bone("characters3d.com___Upper_Chest")
 		if chest_bone_id < 0:
 			chest_bone_id = skeleton.find_bone("characters3d.com___Chest")
+
+		# Find spine bones for aiming IK
+		spine_bone_id = skeleton.find_bone("characters3d.com___Spine")
+		upper_chest_bone_id = skeleton.find_bone("characters3d.com___Upper_Chest")
 
 		if head_bone_id >= 0:
 			original_head_pose = skeleton.get_bone_pose(head_bone_id)
@@ -268,7 +305,7 @@ func find_mesh_instance(node: Node) -> MeshInstance3D:
 	return null
 
 func _create_crosshair_ui():
-	"""Create crosshair UI overlay"""
+	"""Create COD-style crosshair UI with 4 expanding lines"""
 	# Create a CanvasLayer to hold the UI
 	var canvas_layer = CanvasLayer.new()
 	canvas_layer.name = "CrosshairLayer"
@@ -281,35 +318,62 @@ func _create_crosshair_ui():
 	crosshair_ui.mouse_filter = Control.MOUSE_FILTER_IGNORE  # Don't intercept mouse events
 	canvas_layer.add_child(crosshair_ui)
 
-	# Create crosshair dot (ColorRect for simple dot)
-	crosshair_dot = ColorRect.new()
-	crosshair_dot.name = "CrosshairDot"
-	crosshair_dot.color = crosshair_color
-	crosshair_dot.size = Vector2(crosshair_size, crosshair_size)
-	crosshair_dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	crosshair_ui.add_child(crosshair_dot)
-
-	# Start at screen center
 	var viewport_size = get_viewport().get_visible_rect().size
-	crosshair_dot.position = viewport_size / 2.0 - crosshair_dot.size / 2.0
+	var center = viewport_size / 2.0
 
-	print("Crosshair UI created")
+	# Create 4 lines for COD-style crosshair (top, bottom, left, right)
+	# Top line
+	var top_line = ColorRect.new()
+	top_line.color = crosshair_color
+	top_line.size = Vector2(crosshair_thickness, crosshair_length)
+	top_line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	crosshair_ui.add_child(top_line)
+	crosshair_lines.append(top_line)
 
-func _update_crosshair():
-	"""Update crosshair position to match weapon barrel direction"""
-	if not crosshair_dot or not equipped_weapon:
-		# No weapon equipped - hide crosshair or keep it at center
-		if crosshair_dot:
-			crosshair_dot.visible = false
+	# Bottom line
+	var bottom_line = ColorRect.new()
+	bottom_line.color = crosshair_color
+	bottom_line.size = Vector2(crosshair_thickness, crosshair_length)
+	bottom_line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	crosshair_ui.add_child(bottom_line)
+	crosshair_lines.append(bottom_line)
+
+	# Left line
+	var left_line = ColorRect.new()
+	left_line.color = crosshair_color
+	left_line.size = Vector2(crosshair_length, crosshair_thickness)
+	left_line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	crosshair_ui.add_child(left_line)
+	crosshair_lines.append(left_line)
+
+	# Right line
+	var right_line = ColorRect.new()
+	right_line.color = crosshair_color
+	right_line.size = Vector2(crosshair_length, crosshair_thickness)
+	right_line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	crosshair_ui.add_child(right_line)
+	crosshair_lines.append(right_line)
+
+	# Position lines at center with gap
+	_update_crosshair_positions(center, base_spread)
+
+	print("COD-style crosshair UI created")
+
+func _update_crosshair_positions(center: Vector2, spread: float):
+	"""Update crosshair line positions based on spread"""
+	if crosshair_lines.size() < 4:
 		return
 
-	# Show crosshair when weapon is equipped
-	crosshair_dot.visible = true
+	var gap_with_spread = crosshair_gap + spread
 
-	# Get camera
-	var camera = fps_camera if camera_mode == 0 else tps_camera
-	if not camera:
-		return
+	# Top line (index 0)
+	crosshair_lines[0].position = Vector2(center.x - crosshair_thickness / 2.0, center.y - gap_with_spread - crosshair_length)
+
+	# Bottom line (index 1)
+	crosshair_lines[1].position = Vector2(center.x - crosshair_thickness / 2.0, center.y + gap_with_spread)
+
+	# Left line (index 2)
+	crosshair_lines[2].position = Vector2(center.x - gap_with_spread - crosshair_length, center.y - crosshair_thickness / 2.0)
 
 	# Raycast from GUN BARREL MUZZLE POINT to find where it's aiming
 	var aim_point_3d: Vector3
@@ -334,20 +398,25 @@ func _update_crosshair():
 		query.collide_with_bodies = true
 		var result = space_state.intersect_ray(query)
 
-		if result:
-			aim_point_3d = result.position
-		else:
-			# No hit - use far point along barrel direction
-			aim_point_3d = muzzle_pos + muzzle_forward * 100.0
-	else:
-		# No muzzle point - use camera forward
-		aim_point_3d = camera.global_position + (-camera.global_transform.basis.z * 100.0)
+	# Hide crosshair when no weapon equipped
+	if not equipped_weapon:
+		for line in crosshair_lines:
+			line.visible = false
+		return
 
-	# Project 3D point to 2D screen space
-	var screen_pos = camera.unproject_position(aim_point_3d)
+	# Show crosshair when weapon is equipped
+	for line in crosshair_lines:
+		line.visible = true
 
-	# Position crosshair dot at screen position (centered on the dot)
-	crosshair_dot.position = screen_pos - crosshair_dot.size / 2.0
+	# Recover spread over time
+	if current_spread > base_spread:
+		current_spread -= spread_recovery_rate * delta
+		current_spread = max(current_spread, base_spread)
+
+	# Update crosshair positions with current spread
+	var viewport_size = get_viewport().get_visible_rect().size
+	var center = viewport_size / 2.0
+	_update_crosshair_positions(center, current_spread)
 
 func _create_ik_system():
 	"""Create SkeletonIK3D nodes at runtime and link them to targets"""
@@ -858,7 +927,7 @@ func _input(event):
 		elif nearby_weapon:
 			pickup_weapon(nearby_weapon)
 
-	# Left click for shooting
+	# Left click for shooting (press and hold for automatic fire)
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_LEFT:
 			if event.pressed:
@@ -1071,6 +1140,16 @@ func _physics_process(delta):
 	if ragdoll_enabled:
 		return
 
+	# Handle automatic fire for full-auto weapons
+	if is_firing and equipped_weapon and equipped_weapon.can_shoot:
+		var current_time = Time.get_ticks_msec() / 1000.0
+		# Check if weapon is full-auto (rifle) or semi-auto (pistol)
+		var is_automatic = equipped_weapon.weapon_type == Weapon.WeaponType.RIFLE
+
+		if is_automatic and (current_time - last_shot_time) >= equipped_weapon.fire_rate:
+			_shoot_weapon()
+			last_shot_time = current_time
+
 	# Handle stance changes
 	_handle_stance_input()
 	_update_stance(delta)
@@ -1138,15 +1217,10 @@ func _physics_process(delta):
 
 	move_and_slide()
 
-	# Update head rotation for aiming
-	if head_look_enabled and skeleton and head_bone_id >= 0:
-		_update_head_look(delta)
+	# Head rotation moved to _process after spine aiming to avoid conflicts
 
 	# Update recoil recovery
 	_update_recoil(delta)
-
-	# Update crosshair position
-	_update_crosshair()
 
 	# Detect nearby weapons for pickup
 	_detect_nearby_weapon()
@@ -1164,14 +1238,26 @@ func _update_head_look(delta):
 		deg_to_rad(-max_head_rotation_y),
 		deg_to_rad(max_head_rotation_y))
 
+	# When aiming: spine handles yaw (horizontal rotation), head only pitches (vertical)
+	# When not aiming: head handles both yaw and pitch normally
+	var pitch_multiplier = 1.0
+	var yaw_multiplier = 1.0
+
+	if equipped_weapon and weapon_state == WeaponState.AIMING:
+		# Spine rotates horizontally to keep gun centered
+		# Disable head yaw to prevent double rotation
+		yaw_multiplier = 0.0
+		# Keep pitch enabled for looking up/down
+		pitch_multiplier = 1.0
+
 	# Apply rotation to neck (contributes to yaw and some pitch)
 	if neck_bone_id >= 0:
 		var neck_pose = skeleton.get_bone_pose(neck_bone_id)
 		var neck_target = Basis()
 		# Neck contributes 40% of the yaw rotation
-		neck_target = neck_target.rotated(Vector3.UP, head_yaw * 0.4)
+		neck_target = neck_target.rotated(Vector3.UP, head_yaw * 0.4 * yaw_multiplier)
 		# Neck contributes 30% of pitch (negated due to 180° model rotation)
-		neck_target = neck_target.rotated(neck_target.x, -head_pitch * 0.3)
+		neck_target = neck_target.rotated(neck_target.x, -head_pitch * 0.3 * pitch_multiplier)
 		neck_target = neck_target * original_neck_pose.basis
 
 		neck_pose.basis = neck_pose.basis.slerp(neck_target, head_rotation_speed * delta)
@@ -1181,9 +1267,9 @@ func _update_head_look(delta):
 	var head_pose = skeleton.get_bone_pose(head_bone_id)
 	var head_target = Basis()
 	# Head contributes 60% of yaw rotation
-	head_target = head_target.rotated(Vector3.UP, head_yaw * 0.6)
+	head_target = head_target.rotated(Vector3.UP, head_yaw * 0.6 * yaw_multiplier)
 	# Head contributes 70% of pitch (negated due to 180° model rotation)
-	head_target = head_target.rotated(head_target.x, -head_pitch * 0.7)
+	head_target = head_target.rotated(head_target.x, -head_pitch * 0.7 * pitch_multiplier)
 	head_target = head_target * original_head_pose.basis
 
 	head_pose.basis = head_pose.basis.slerp(head_target, head_rotation_speed * delta)
@@ -1513,6 +1599,13 @@ func _shoot_weapon():
 	# Apply recoil
 	_apply_recoil()
 
+	# Increase crosshair spread
+	current_spread += spread_increase_per_shot
+	current_spread = min(current_spread, max_spread)
+
+	# Update last shot time
+	last_shot_time = Time.get_ticks_msec() / 1000.0
+
 	# Handle hit result
 	if hit_result.hit:
 		var hit_node = hit_result.collider
@@ -1712,6 +1805,7 @@ func _fill_gunshot_buffer(audio_player: AudioStreamPlayer3D):
 
 	for i in range(samples):
 		var t = float(i) / float(samples)
+		var time_seconds = float(i) / mix_rate
 
 		# Multi-stage envelope for realistic gunshot
 		var attack = 1.0 - smoothstep(0.0, 0.02, t)  # Very sharp initial attack (20ms)
