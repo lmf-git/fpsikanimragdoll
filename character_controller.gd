@@ -207,6 +207,10 @@ var spine_bone_weights: Dictionary = {
 	"Upper_Chest": 0.0  # Not used - upper_chest is parent of neck/head, rotating it displaces head
 }
 
+# ============================================================================
+# INITIALIZATION
+# ============================================================================
+
 func _ready():
 	print("\n=== Character Controller Ready ===")
 	# Capture mouse
@@ -304,6 +308,10 @@ func find_mesh_instance(node: Node) -> MeshInstance3D:
 			return result
 	return null
 
+# ============================================================================
+# UI / CROSSHAIR SYSTEM
+# ============================================================================
+
 func _create_crosshair_ui():
 	"""Create COD-style crosshair UI with 4 expanding lines"""
 	# Create a CanvasLayer to hold the UI
@@ -375,29 +383,11 @@ func _update_crosshair_positions(center: Vector2, spread: float):
 	# Left line (index 2)
 	crosshair_lines[2].position = Vector2(center.x - gap_with_spread - crosshair_length, center.y - crosshair_thickness / 2.0)
 
-	# Raycast from GUN BARREL MUZZLE POINT to find where it's aiming
-	var aim_point_3d: Vector3
-	if equipped_weapon.muzzle_point:
-		# Raycast from muzzle in the direction the barrel is pointing
-		var muzzle_pos = equipped_weapon.muzzle_point.global_position
-		var muzzle_forward = -equipped_weapon.muzzle_point.global_transform.basis.z
+	# Right line (index 3)
+	crosshair_lines[3].position = Vector2(center.x + gap_with_spread, center.y - crosshair_thickness / 2.0)
 
-		# Perform raycast to find hit point
-		var space_state = get_world_3d().direct_space_state
-		var query = PhysicsRayQueryParameters3D.create(muzzle_pos, muzzle_pos + muzzle_forward * 100.0)
-
-		# Build exclusion list: character, weapon, IK targets, and ragdoll bones
-		var exclusions = [self, equipped_weapon]
-		var ik_targets_node = get_node_or_null("IKTargets")
-		if ik_targets_node:
-			for child in ik_targets_node.get_children():
-				exclusions.append(child)
-
-		query.exclude = exclusions
-		query.collide_with_areas = false  # Don't hit IK targets
-		query.collide_with_bodies = true
-		var result = space_state.intersect_ray(query)
-
+func _update_crosshair(delta: float):
+	"""Update crosshair visibility and spread recovery"""
 	# Hide crosshair when no weapon equipped
 	if not equipped_weapon:
 		for line in crosshair_lines:
@@ -415,8 +405,93 @@ func _update_crosshair_positions(center: Vector2, spread: float):
 
 	# Update crosshair positions with current spread
 	var viewport_size = get_viewport().get_visible_rect().size
-	var center = viewport_size / 2.0
-	_update_crosshair_positions(center, current_spread)
+	var screen_center = viewport_size / 2.0
+	_update_crosshair_positions(screen_center, current_spread)
+
+# ============================================================================
+# IK HELPER FUNCTIONS
+# ============================================================================
+
+func _start_ik_chain(ik_nodes: Array):
+	"""Start multiple IK nodes at once"""
+	for ik in ik_nodes:
+		if ik:
+			ik.start()
+
+func _stop_ik_chain(ik_nodes: Array):
+	"""Stop multiple IK nodes at once"""
+	for ik in ik_nodes:
+		if ik:
+			ik.stop()
+
+func _start_arm_ik(right_arm: bool = true, left_arm: bool = false):
+	"""Start arm IK chains (right arm and/or left arm)"""
+	if right_arm:
+		_start_ik_chain([right_wrist_ik, right_elbow_ik, right_upper_arm_ik])
+	if left_arm:
+		_start_ik_chain([left_wrist_ik, left_elbow_ik])
+
+func _stop_arm_ik(right_arm: bool = true, left_arm: bool = false):
+	"""Stop arm IK chains"""
+	if right_arm:
+		_stop_ik_chain([right_wrist_ik, right_elbow_ik, right_upper_arm_ik])
+	if left_arm:
+		_stop_ik_chain([left_wrist_ik, left_elbow_ik, left_upper_arm_ik])
+
+func _start_foot_ik():
+	"""Start both foot IK chains"""
+	_start_ik_chain([left_foot_ik, right_foot_ik])
+
+func _stop_foot_ik():
+	"""Stop both foot IK chains"""
+	_stop_ik_chain([left_foot_ik, right_foot_ik])
+
+# ============================================================================
+# WEAPON HELPER FUNCTIONS
+# ============================================================================
+
+func _find_physical_bone(bone_id: int) -> PhysicalBone3D:
+	"""Find physical bone by skeleton bone ID"""
+	if not skeleton or bone_id < 0:
+		return null
+
+	var bone_name = skeleton.get_bone_name(bone_id)
+	for child in skeleton.get_children():
+		if child is PhysicalBone3D and child.bone_name == bone_name:
+			return child
+	return null
+
+func _apply_weapon_grip_transform(weapon: Weapon):
+	"""Apply grip-aligned transform to weapon (works for both normal and ragdoll attachment)"""
+	if not weapon:
+		return
+
+	if weapon.main_grip:
+		var grip_local_pos = weapon.main_grip.position
+		var rotation_offset = Basis().rotated(Vector3.RIGHT, deg_to_rad(-90))
+		weapon.transform.basis = rotation_offset
+		var grip_offset_rotated = weapon.transform.basis * grip_local_pos
+		weapon.transform.origin = -grip_offset_rotated
+
+		# Apply weapon-specific offset (in local space: X- = left, Z+ = forward)
+		var weapon_offset = Vector3.ZERO
+		if weapon.weapon_type == Weapon.WeaponType.PISTOL:
+			weapon_offset = Vector3(-0.03, 0.0, 0.08)  # 3cm left, 8cm forward
+		elif weapon.weapon_type == Weapon.WeaponType.RIFLE:
+			weapon_offset = Vector3(-0.02, 0.0, 0.12)  # 2cm left, 12cm forward
+		weapon.transform.origin += weapon_offset
+	else:
+		# Default pistol offset
+		weapon.transform.origin = Vector3(-0.03, 0.0, 0.08)
+		weapon.transform.basis = Basis().rotated(Vector3.RIGHT, deg_to_rad(-90))
+
+# ============================================================================
+# END HELPER FUNCTIONS
+# ============================================================================
+
+# ============================================================================
+# IK SYSTEM
+# ============================================================================
 
 func _create_ik_system():
 	"""Create SkeletonIK3D nodes at runtime and link them to targets"""
@@ -599,6 +674,10 @@ func _create_ik_system():
 		print("Created RightFootIK")
 
 	print("=== IK System Created ===\n")
+
+# ============================================================================
+# RAGDOLL SYSTEM
+# ============================================================================
 
 func _create_ragdoll_bones():
 	print("\n=== Creating Ragdoll Bones at Runtime ===")
@@ -888,6 +967,10 @@ func _create_ragdoll_bones():
 
 	print("Created ", bones_created, " ragdoll bones")
 
+# ============================================================================
+# INPUT HANDLING
+# ============================================================================
+
 func _input(event):
 	if event is InputEventMouseMotion and Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED:
 		camera_rotation.x -= event.relative.y * mouse_sensitivity
@@ -969,6 +1052,10 @@ func _input(event):
 		else:
 			Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 
+# ============================================================================
+# CAMERA SYSTEM
+# ============================================================================
+
 func _switch_camera(mode: int):
 	print("\n=== _switch_camera called ===")
 	print("Mode: ", mode, " (", "FPS" if mode == 0 else "TPS", ")")
@@ -1003,6 +1090,10 @@ func _switch_camera(mode: int):
 		print("fps_camera: ", fps_camera)
 		print("tps_camera: ", tps_camera)
 	print("=== End _switch_camera ===\n")
+
+# ============================================================================
+# STANCE SYSTEM
+# ============================================================================
 
 func _handle_stance_input():
 	"""Handle stance change inputs"""
@@ -1135,6 +1226,10 @@ func _update_ik_for_stance(delta):
 
 		left_hand_target.position.y = lerp(left_hand_target.position.y, hand_height, stance_transition_speed * delta)
 		right_hand_target.position.y = lerp(right_hand_target.position.y, hand_height, stance_transition_speed * delta)
+
+# ============================================================================
+# MAIN LOOP - PHYSICS
+# ============================================================================
 
 func _physics_process(delta):
 	if ragdoll_enabled:
@@ -1349,14 +1444,7 @@ func _attach_weapon_to_ragdoll_hand():
 		return
 
 	# Find the physical bone for the right hand
-	var hand_bone_name = skeleton.get_bone_name(right_hand_bone_id)
-	var physical_hand_bone = null
-
-	for child in skeleton.get_children():
-		if child is PhysicalBone3D and child.bone_name == hand_bone_name:
-			physical_hand_bone = child
-			break
-
+	var physical_hand_bone = _find_physical_bone(right_hand_bone_id)
 	if not physical_hand_bone:
 		print("WARNING: Could not find physical bone for right hand")
 		return
@@ -1370,27 +1458,8 @@ func _attach_weapon_to_ragdoll_hand():
 	# Add weapon as child of physical hand bone
 	physical_hand_bone.add_child(equipped_weapon)
 
-	# Position weapon relative to hand bone (using grip alignment)
-	if equipped_weapon.main_grip:
-		var grip_local_pos = equipped_weapon.main_grip.position
-		# Apply rotation offset for proper weapon orientation
-		var rotation_offset = Basis().rotated(Vector3.RIGHT, deg_to_rad(-90))
-		equipped_weapon.transform.basis = rotation_offset
-		# Position so grip aligns with hand bone origin
-		var grip_offset_rotated = equipped_weapon.transform.basis * grip_local_pos
-		equipped_weapon.position = -grip_offset_rotated
-
-		# Add weapon-specific offset (same as normal equip)
-		# In local space: X- = left, Z+ = forward
-		var weapon_offset = Vector3.ZERO
-		if equipped_weapon.weapon_type == Weapon.WeaponType.PISTOL:
-			weapon_offset = Vector3(-0.03, 0.0, 0.08)  # 3cm left, 8cm forward
-		elif equipped_weapon.weapon_type == Weapon.WeaponType.RIFLE:
-			weapon_offset = Vector3(-0.02, 0.0, 0.12)  # 2cm left, 12cm forward
-		equipped_weapon.position += weapon_offset
-	else:
-		equipped_weapon.position = Vector3(-0.03, 0.0, 0.08)  # Default pistol offset (forward and left)
-		equipped_weapon.rotation = Vector3.ZERO
+	# Apply grip-aligned transform
+	_apply_weapon_grip_transform(equipped_weapon)
 
 	# Enable weapon ragdoll mode - stays in hand until collision
 	equipped_weapon.enter_ragdoll_mode()
@@ -1420,26 +1489,8 @@ func _detach_weapon_from_ragdoll_hand():
 	# Re-add to hand attachment (BoneAttachment3D)
 	if right_hand_attachment:
 		right_hand_attachment.add_child(equipped_weapon)
-
 		# Restore grip-aligned transform
-		if equipped_weapon.main_grip:
-			var grip_local_pos = equipped_weapon.main_grip.position
-			var rotation_offset = Basis().rotated(Vector3.RIGHT, deg_to_rad(-90))
-			equipped_weapon.transform.basis = rotation_offset
-			var grip_offset_rotated = equipped_weapon.transform.basis * grip_local_pos
-			equipped_weapon.transform.origin = -grip_offset_rotated
-
-			# Apply weapon-specific offset
-			# In local space: X- = left, Z+ = forward
-			var weapon_offset = Vector3.ZERO
-			if equipped_weapon.weapon_type == Weapon.WeaponType.PISTOL:
-				weapon_offset = Vector3(-0.03, 0.0, 0.08)  # 3cm left, 8cm forward
-			elif equipped_weapon.weapon_type == Weapon.WeaponType.RIFLE:
-				weapon_offset = Vector3(-0.02, 0.0, 0.12)  # 2cm left, 12cm forward
-			equipped_weapon.transform.origin += weapon_offset
-		else:
-			equipped_weapon.transform.origin = Vector3(-0.03, 0.0, 0.08)  # Default pistol offset (forward and left)
-			equipped_weapon.transform.basis = Basis().rotated(Vector3.RIGHT, deg_to_rad(-90))
+		_apply_weapon_grip_transform(equipped_weapon)
 
 	print("Weapon restored to normal attachment")
 
@@ -1449,14 +1500,7 @@ func _attach_camera_to_ragdoll_head():
 		return
 
 	# Find the physical bone for the head
-	var bone_name = skeleton.get_bone_name(head_bone_id)
-	var physical_head_bone = null
-
-	for child in skeleton.get_children():
-		if child is PhysicalBone3D and child.bone_name == bone_name:
-			physical_head_bone = child
-			break
-
+	var physical_head_bone = _find_physical_bone(head_bone_id)
 	if not physical_head_bone:
 		print("WARNING: Could not find physical bone for head")
 		return
@@ -1499,6 +1543,10 @@ func _detach_camera_from_ragdoll_head():
 	fps_camera.rotation = Vector3.ZERO
 
 	print("FPS camera restored to character")
+
+# ============================================================================
+# WEAPON SYSTEM - Detection, Pickup, Drop
+# ============================================================================
 
 func _detect_nearby_weapon():
 	"""Detect weapons within pickup range"""
@@ -1545,6 +1593,10 @@ func pickup_weapon(weapon: Weapon):
 		nearby_weapon = null
 
 		# Weapon is now parented to hand bone and will automatically follow IK transforms
+
+# ============================================================================
+# WEAPON SYSTEM - Shooting & Combat
+# ============================================================================
 
 func _shoot_weapon():
 	"""Shoot the currently equipped weapon"""
@@ -1629,6 +1681,10 @@ func _find_parent_character(node: Node) -> Node:
 		current = current.get_parent()
 	return null
 
+# ============================================================================
+# VISUAL EFFECTS - Muzzle Flash, Impact, Smoke
+# ============================================================================
+
 func _trigger_muzzle_flash():
 	"""Create and trigger muzzle flash and smoke effect at weapon muzzle"""
 	if not equipped_weapon:
@@ -1702,35 +1758,32 @@ func _trigger_muzzle_flash():
 
 	print("Muzzle flash and smoke at ", muzzle_position)
 
-func _create_muzzle_smoke_scale_curve() -> Curve:
-	"""Create curve for muzzle smoke particles to grow over time"""
+func _create_smoke_scale_curve(start: float, peak: float, end: float) -> Curve:
+	"""Generic curve for smoke particles to grow over time"""
 	var curve = Curve.new()
-	curve.add_point(Vector2(0.0, 0.2))  # Start small
-	curve.add_point(Vector2(0.5, 1.0))  # Grow to full size
-	curve.add_point(Vector2(1.0, 1.3))  # Continue expanding
+	curve.add_point(Vector2(0.0, start))
+	curve.add_point(Vector2(0.5, peak))
+	curve.add_point(Vector2(1.0, end))
 	return curve
+
+func _create_smoke_fade_gradient(start_color: Color, end_color: Color) -> Gradient:
+	"""Generic gradient for smoke to fade out over time"""
+	var gradient = Gradient.new()
+	gradient.set_color(0, start_color)
+	gradient.set_color(1, end_color)
+	return gradient
+
+func _create_muzzle_smoke_scale_curve() -> Curve:
+	return _create_smoke_scale_curve(0.2, 1.0, 1.3)
 
 func _create_muzzle_smoke_fade_gradient() -> Gradient:
-	"""Create gradient for muzzle smoke to fade out over time"""
-	var gradient = Gradient.new()
-	gradient.set_color(0, Color(0.4, 0.4, 0.45, 0.7))  # Start visible gray-blue
-	gradient.set_color(1, Color(0.3, 0.3, 0.3, 0.0))  # Fade to transparent
-	return gradient
+	return _create_smoke_fade_gradient(Color(0.4, 0.4, 0.45, 0.7), Color(0.3, 0.3, 0.3, 0.0))
 
 func _create_impact_smoke_scale_curve() -> Curve:
-	"""Create curve for impact smoke/dust particles to grow over time"""
-	var curve = Curve.new()
-	curve.add_point(Vector2(0.0, 0.3))  # Start small
-	curve.add_point(Vector2(0.5, 1.0))  # Grow to full size
-	curve.add_point(Vector2(1.0, 1.2))  # Slight expansion
-	return curve
+	return _create_smoke_scale_curve(0.3, 1.0, 1.2)
 
 func _create_impact_smoke_fade_gradient() -> Gradient:
-	"""Create gradient for impact smoke to fade out over time"""
-	var gradient = Gradient.new()
-	gradient.set_color(0, Color(0.5, 0.45, 0.4, 0.8))  # Start visible dusty color
-	gradient.set_color(1, Color(0.4, 0.4, 0.4, 0.0))  # Fade to transparent
-	return gradient
+	return _create_smoke_fade_gradient(Color(0.5, 0.45, 0.4, 0.8), Color(0.4, 0.4, 0.4, 0.0))
 
 func _create_smoke_mesh() -> SphereMesh:
 	"""Create circular mesh for smoke particles"""
@@ -1750,6 +1803,10 @@ func _create_smoke_mesh() -> SphereMesh:
 	mesh.material = material
 
 	return mesh
+
+# ============================================================================
+# AUDIO SYSTEM
+# ============================================================================
 
 func _play_gunshot_sound():
 	"""Play realistic gunshot sound using audio pool for rapid fire support"""
@@ -1842,6 +1899,10 @@ func _fill_gunshot_buffer(audio_player: AudioStreamPlayer3D):
 
 		# Push stereo frame
 		playback.push_frame(Vector2(sample, sample))
+
+# ============================================================================
+# WEAPON SYSTEM - Recoil & Sway
+# ============================================================================
 
 func _apply_recoil():
 	"""Apply recoil to camera and weapon"""
@@ -2042,6 +2103,10 @@ func drop_weapon():
 
 	equipped_weapon.unequip()
 	equipped_weapon = null
+
+# ============================================================================
+# WEAPON SYSTEM - Positioning & IK
+# ============================================================================
 
 func _calculate_weapon_sway(delta: float, moving: bool) -> Vector3:
 	"""Calculate procedural weapon sway based on movement and time"""
@@ -2292,7 +2357,14 @@ func _update_weapon_to_hand():
 		# No grip point - use weapon origin
 		equipped_weapon.transform.origin = Vector3.ZERO
 
-func _process(_delta):
+# ============================================================================
+# MAIN LOOP - PROCESS (Visual Updates & IK)
+# ============================================================================
+
+func _process(delta):
+	# Update crosshair visibility and spread
+	_update_crosshair(delta)
+
 	# WEAPON UPDATE ORDER - CRITICAL for proper IK-based positioning:
 	# 1. Set IK targets (where hands should go based on weapon state/aiming)
 	# 2. Apply IK (moves bones to targets)
@@ -2305,118 +2377,27 @@ func _process(_delta):
 	# STEP 2: Apply IK - start() moves bones to targets
 	if ik_enabled:
 		# IK enabled - apply foot IK always
-		if left_foot_ik:
-			left_foot_ik.start()
-		if right_foot_ik:
-			right_foot_ik.start()
+		_start_foot_ik()
 
 		# Arm IK depends on weapon equipped state
 		if equipped_weapon:
-			# Weapon equipped - use full right arm IK chain (3 chains)
-			# Apply from hand to shoulder for proper solving order
-			if right_wrist_ik:
-				right_wrist_ik.start()
-			if right_elbow_ik:
-				right_elbow_ik.start()
-			if right_upper_arm_ik:
-				right_upper_arm_ik.start()
-
-			# Finger IK disabled - creates circular dependency with weapon positioning
-			# Hand rotation alone provides proper grip orientation
-			#if right_thumb_ik:
-			#	right_thumb_ik.start()
-			#if right_index_ik:
-			#	right_index_ik.start()
-			#if right_middle_ik:
-			#	right_middle_ik.start()
-
-			# Left arm IK control based on weapon state
-			if weapon_state == WeaponState.AIMING:
-				# When aiming, activate left arm IK for two-handed grip or support
-				# Apply wrist IK BEFORE elbow IK
-				if left_wrist_ik:
-					left_wrist_ik.start()
-				if left_elbow_ik:
-					left_elbow_ik.start()
-			else:
-				# Not aiming - disable left arm IK for relaxed pose (one-handed grip)
-				if left_elbow_ik:
-					left_elbow_ik.stop()
-				if left_wrist_ik:
-					left_wrist_ik.stop()
+			# Weapon equipped - use right arm IK for holding weapon
+			var use_left_arm = (weapon_state == WeaponState.AIMING)  # Two-handed when aiming
+			_start_arm_ik(true, use_left_arm)
 		else:
-			# No weapon - use default animation for arms
-			if left_upper_arm_ik:
-				left_upper_arm_ik.stop()
-			if left_elbow_ik:
-				left_elbow_ik.stop()
-			if left_wrist_ik:
-				left_wrist_ik.stop()
-			if right_upper_arm_ik:
-				right_upper_arm_ik.stop()
-			if right_elbow_ik:
-				right_elbow_ik.stop()
-			if right_wrist_ik:
-				right_wrist_ik.stop()
-			# Stop finger IK
-			if right_thumb_ik:
-				right_thumb_ik.stop()
-			if right_index_ik:
-				right_index_ik.stop()
-			if right_middle_ik:
-				right_middle_ik.stop()
+			# No weapon - stop all arm IK
+			_stop_arm_ik(true, true)
 	else:
 		# IK disabled - but keep arm IK active if weapon equipped
 		if equipped_weapon:
 			# Keep right arm IK active to hold weapon
-			# Apply from hand to shoulder for proper chain solving
-			if right_wrist_ik:
-				right_wrist_ik.start()
-			if right_elbow_ik:
-				right_elbow_ik.start()
-			if right_upper_arm_ik:
-				right_upper_arm_ik.start()
-
-			# Finger IK disabled - creates circular dependency with weapon positioning
-			# Hand rotation alone provides proper grip orientation
-			#if right_thumb_ik:
-			#	right_thumb_ik.start()
-			#if right_index_ik:
-			#	right_index_ik.start()
-			#if right_middle_ik:
-			#	right_middle_ik.start()
-
-			# Left arm IK only when aiming
-			if weapon_state == WeaponState.AIMING:
-				if left_wrist_ik:
-					left_wrist_ik.start()
-				if left_elbow_ik:
-					left_elbow_ik.start()
-			else:
-				if left_elbow_ik:
-					left_elbow_ik.stop()
-				if left_wrist_ik:
-					left_wrist_ik.stop()
-
-			# Disable foot IK when IK is toggled off
-			if left_foot_ik:
-				left_foot_ik.stop()
-			if right_foot_ik:
-				right_foot_ik.stop()
+			var use_left_arm = (weapon_state == WeaponState.AIMING)  # Two-handed when aiming
+			_start_arm_ik(true, use_left_arm)
+			_stop_foot_ik()
 		else:
 			# No weapon - stop all IK
-			if left_elbow_ik:
-				left_elbow_ik.stop()
-			if left_wrist_ik:
-				left_wrist_ik.stop()
-			if right_elbow_ik:
-				right_elbow_ik.stop()
-			if right_wrist_ik:
-				right_wrist_ik.stop()
-			if left_foot_ik:
-				left_foot_ik.stop()
-			if right_foot_ik:
-				right_foot_ik.stop()
+			_stop_arm_ik(true, true)
+			_stop_foot_ik()
 
 	# STEP 3: Override weapon orientation to match camera aim direction
 	# This prevents gun from rotating opposite to arm movement
