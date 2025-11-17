@@ -2374,8 +2374,8 @@ func _apply_hand_grip_pose():
 				bend_angle = deg_to_rad(-25) * grip_amount  # Thumb bends less
 
 			# Try Z axis rotation for curling fingers
-			var rotation = Quaternion(Vector3(0, 0, 1), bend_angle)
-			skeleton.set_bone_pose_rotation(bone_id, rotation)
+			var finger_rotation = Quaternion(Vector3(0, 0, 1), bend_angle)
+			skeleton.set_bone_pose_rotation(bone_id, finger_rotation)
 
 	# Apply grip to left hand (only when two-handed or aiming)
 	if equipped_weapon.is_two_handed or weapon_state == WeaponState.AIMING:
@@ -2394,8 +2394,8 @@ func _apply_hand_grip_pose():
 				if "Thumb" in finger_name:
 					bend_angle = deg_to_rad(-25) * grip_amount
 
-				var rotation = Quaternion(Vector3(0, 0, 1), bend_angle)
-				skeleton.set_bone_pose_rotation(bone_id, rotation)
+				var finger_rotation = Quaternion(Vector3(0, 0, 1), bend_angle)
+				skeleton.set_bone_pose_rotation(bone_id, finger_rotation)
 
 func _update_weapon_to_hand():
 	"""Set weapon local position and rotation for proper grip alignment"""
