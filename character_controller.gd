@@ -448,6 +448,39 @@ func _stop_foot_ik():
 	"""Stop both foot IK chains"""
 	_stop_ik_chain([left_foot_ik, right_foot_ik])
 
+func _debug_ik_positions():
+	"""Debug output for IK target positions when aiming - helps with weapon positioning"""
+	if not ik_targets_node:
+		return
+
+	var right_hand_target = ik_targets_node.get_node_or_null("RightHandTarget")
+	var left_hand_target = ik_targets_node.get_node_or_null("LeftHandTarget")
+
+	print("\n=== IK TARGET POSITIONS (ADS) ===")
+	print("Weapon: ", equipped_weapon.weapon_name if equipped_weapon else "None")
+	print("Weapon State: ", WeaponState.keys()[weapon_state])
+
+	if right_hand_target:
+		print("Right Hand Target: ", right_hand_target.global_position)
+		print("  Local: ", right_hand_target.position)
+
+	if left_hand_target and (equipped_weapon.is_two_handed or weapon_state == WeaponState.AIMING):
+		print("Left Hand Target: ", left_hand_target.global_position)
+		print("  Local: ", left_hand_target.position)
+
+	# Show current weapon offsets being used
+	var current_offset = ready_weapon_offset
+	match weapon_state:
+		WeaponState.SHEATHED:
+			current_offset = sheathed_weapon_offset
+		WeaponState.READY:
+			current_offset = ready_weapon_offset
+		WeaponState.AIMING:
+			current_offset = aim_weapon_offset
+
+	print("Current Weapon Offset: ", current_offset)
+	print("=== END IK DEBUG ===\n")
+
 # ============================================================================
 # WEAPON HELPER FUNCTIONS
 # ============================================================================
@@ -981,32 +1014,17 @@ func _input(event):
 		camera_rotation.x = clamp(camera_rotation.x, deg_to_rad(-max_camera_pitch_up), deg_to_rad(max_camera_pitch_down))
 
 	if event.is_action_pressed("toggle_camera"):
-		print("\n=== TOGGLE CAMERA PRESSED ===")
-		print("Current camera_mode: ", camera_mode)
 		camera_mode = (camera_mode + 1) % 2
-		print("New camera_mode: ", camera_mode)
 		_switch_camera(camera_mode)
-		print("Camera mode: ", "FPS" if camera_mode == 0 else "TPS")
-		print("=== END TOGGLE ===\n")
 
 	if event.is_action_pressed("toggle_ik"):
-		print("\n=== TOGGLE IK PRESSED ===")
 		ik_enabled = !ik_enabled
-		print("IK enabled: ", ik_enabled)
-		print("Left elbow IK: ", left_elbow_ik)
-		print("Right elbow IK: ", right_elbow_ik)
-		print("Left wrist IK: ", left_wrist_ik)
-		print("Right wrist IK: ", right_wrist_ik)
-		print("Left foot IK: ", left_foot_ik)
-		print("Right foot IK: ", right_foot_ik)
-		print("=== END IK TOGGLE ===\n")
 
 	if event.is_action_pressed("toggle_ragdoll"):
 		toggle_ragdoll()
 
 	# E key for weapon pickup/drop
 	if event is InputEventKey and event.pressed and event.keycode == KEY_E:
-		print("E key pressed - equipped_weapon: ", equipped_weapon, ", nearby_weapon: ", nearby_weapon)
 		if equipped_weapon:
 			drop_weapon()
 		elif nearby_weapon:
@@ -1032,9 +1050,12 @@ func _input(event):
 				if Input.is_key_pressed(KEY_CTRL):
 					is_aim_toggled = !is_aim_toggled
 					weapon_state = WeaponState.AIMING if is_aim_toggled else WeaponState.READY
+					if is_aim_toggled:
+						_debug_ik_positions()
 				else:
 					# Just right click = hold to aim
 					weapon_state = WeaponState.AIMING
+					_debug_ik_positions()
 			else:
 				# Right click released - return to ready only if not toggled
 				if not is_aim_toggled:
@@ -1046,7 +1067,6 @@ func _input(event):
 			is_weapon_sheathed = !is_weapon_sheathed
 			is_aim_toggled = false  # Reset aim toggle when sheathing
 			weapon_state = WeaponState.SHEATHED if is_weapon_sheathed else WeaponState.READY
-			print("Weapon ", "sheathed" if is_weapon_sheathed else "ready")
 
 	# Alt key for freelook mode (head turns before body)
 	if event is InputEventKey and event.keycode == KEY_ALT:
@@ -1063,39 +1083,25 @@ func _input(event):
 # ============================================================================
 
 func _switch_camera(mode: int):
-	print("\n=== _switch_camera called ===")
-	print("Mode: ", mode, " (", "FPS" if mode == 0 else "TPS", ")")
-	print("fps_camera exists: ", fps_camera != null)
-	print("tps_camera exists: ", tps_camera != null)
-
 	if fps_camera and tps_camera:
 		if mode == 0:  # FPS
-			print("Setting FPS camera as current")
 			fps_camera.current = true
 			tps_camera.current = false
 			# Use camera cull mask to hide character body in FPS
 			# Layer 1 = default, Layer 2 = character body
 			if mesh_instance:
-				# Move mesh to layer 2
 				mesh_instance.layers = 2
-				print("Mesh moved to layer 2")
 			# FPS camera only sees layer 1 (not character body)
 			fps_camera.cull_mask = 1
 		else:  # TPS
-			print("Setting TPS camera as current")
 			fps_camera.current = false
 			tps_camera.current = true
 			if mesh_instance:
-				# Move mesh back to layer 1
 				mesh_instance.layers = 1
-				print("Mesh moved to layer 1")
 			# TPS camera sees all layers
 			tps_camera.cull_mask = 0xFFFFF
 	else:
 		print("ERROR: One or both cameras are null!")
-		print("fps_camera: ", fps_camera)
-		print("tps_camera: ", tps_camera)
-	print("=== End _switch_camera ===\n")
 
 # ============================================================================
 # STANCE SYSTEM
