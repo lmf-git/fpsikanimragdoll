@@ -2322,53 +2322,80 @@ func _update_weapon_ik_targets(delta: float):
 
 func _apply_hand_grip_pose():
 	"""Apply finger bending for weapon grip pose"""
-	if not skeleton or not equipped_weapon:
+	if not skeleton:
 		return
 
-	# Grip strength (how much to bend fingers)
-	var grip_amount = 0.8  # 0.0 = open hand, 1.0 = closed fist
-
-	# Right hand finger bones - bend for grip
-	var right_fingers = [
-		"characters3d.com___R_Thumb_Proximal", "characters3d.com___R_Thumb_Intermediate",
+	# Reset all finger bones to rest pose first
+	var all_fingers = [
+		# Right hand
+		"characters3d.com___R_Thumb_Proximal", "characters3d.com___R_Thumb_Intermediate", "characters3d.com___R_Thumb_Distal",
 		"characters3d.com___R_Index_Proximal", "characters3d.com___R_Index_Intermediate", "characters3d.com___R_Index_Distal",
 		"characters3d.com___R_Middle_Proximal", "characters3d.com___R_Middle_Intermediate", "characters3d.com___R_Middle_Distal",
 		"characters3d.com___R_Ring_Proximal", "characters3d.com___R_Ring_Intermediate", "characters3d.com___R_Ring_Distal",
-		"characters3d.com___R_Little_Proximal", "characters3d.com___R_Little_Intermediate", "characters3d.com___R_Little_Distal"
-	]
-
-	# Left hand finger bones - bend when using two hands
-	var left_fingers = [
-		"characters3d.com___L_Thumb_Proximal", "characters3d.com___L_Thumb_Intermediate",
+		"characters3d.com___R_Little_Proximal", "characters3d.com___R_Little_Intermediate", "characters3d.com___R_Little_Distal",
+		# Left hand
+		"characters3d.com___L_Thumb_Proximal", "characters3d.com___L_Thumb_Intermediate", "characters3d.com___L_Thumb_Distal",
 		"characters3d.com___L_Index_Proximal", "characters3d.com___L_Index_Intermediate", "characters3d.com___L_Index_Distal",
 		"characters3d.com___L_Middle_Proximal", "characters3d.com___L_Middle_Intermediate", "characters3d.com___L_Middle_Distal",
 		"characters3d.com___L_Ring_Proximal", "characters3d.com___L_Ring_Intermediate", "characters3d.com___L_Ring_Distal",
 		"characters3d.com___L_Little_Proximal", "characters3d.com___L_Little_Intermediate", "characters3d.com___L_Little_Distal"
 	]
 
+	# Reset all fingers to rest pose
+	for finger_name in all_fingers:
+		var bone_id = skeleton.find_bone(finger_name)
+		if bone_id >= 0:
+			skeleton.set_bone_pose_rotation(bone_id, Quaternion.IDENTITY)
+			skeleton.set_bone_pose_position(bone_id, Vector3.ZERO)
+
+	# Only apply grip if weapon is equipped and not sheathed
+	if not equipped_weapon or weapon_state == WeaponState.SHEATHED:
+		return
+
+	# Grip strength (how much to bend fingers)
+	var grip_amount = 0.6  # 0.0 = open hand, 1.0 = closed fist
+
+	# Right hand finger bones - bend for grip
+	var right_fingers = [
+		"characters3d.com___R_Thumb_Proximal", "characters3d.com___R_Thumb_Intermediate", "characters3d.com___R_Thumb_Distal",
+		"characters3d.com___R_Index_Proximal", "characters3d.com___R_Index_Intermediate", "characters3d.com___R_Index_Distal",
+		"characters3d.com___R_Middle_Proximal", "characters3d.com___R_Middle_Intermediate", "characters3d.com___R_Middle_Distal",
+		"characters3d.com___R_Ring_Proximal", "characters3d.com___R_Ring_Intermediate", "characters3d.com___R_Ring_Distal",
+		"characters3d.com___R_Little_Proximal", "characters3d.com___R_Little_Intermediate", "characters3d.com___R_Little_Distal"
+	]
+
 	# Apply grip to right hand (always when weapon equipped)
 	for finger_name in right_fingers:
 		var bone_id = skeleton.find_bone(finger_name)
 		if bone_id >= 0:
-			var bone_pose = skeleton.get_bone_pose(bone_id)
-			# Bend fingers inward (rotate around X axis)
-			var bend_angle = deg_to_rad(60) * grip_amount  # 60 degrees per joint
+			# Bend fingers - try different axes to find correct one
+			var bend_angle = deg_to_rad(-30) * grip_amount  # Negative might be needed
 			if "Thumb" in finger_name:
-				bend_angle = deg_to_rad(45) * grip_amount  # Thumb bends less
-			bone_pose.basis = bone_pose.basis.rotated(Vector3(1, 0, 0), bend_angle)
-			skeleton.set_bone_pose(bone_id, bone_pose)
+				bend_angle = deg_to_rad(-25) * grip_amount  # Thumb bends less
+
+			# Try Z axis rotation for curling fingers
+			var rotation = Quaternion(Vector3(0, 0, 1), bend_angle)
+			skeleton.set_bone_pose_rotation(bone_id, rotation)
 
 	# Apply grip to left hand (only when two-handed or aiming)
 	if equipped_weapon.is_two_handed or weapon_state == WeaponState.AIMING:
+		var left_fingers = [
+			"characters3d.com___L_Thumb_Proximal", "characters3d.com___L_Thumb_Intermediate", "characters3d.com___L_Thumb_Distal",
+			"characters3d.com___L_Index_Proximal", "characters3d.com___L_Index_Intermediate", "characters3d.com___L_Index_Distal",
+			"characters3d.com___L_Middle_Proximal", "characters3d.com___L_Middle_Intermediate", "characters3d.com___L_Middle_Distal",
+			"characters3d.com___L_Ring_Proximal", "characters3d.com___L_Ring_Intermediate", "characters3d.com___L_Ring_Distal",
+			"characters3d.com___L_Little_Proximal", "characters3d.com___L_Little_Intermediate", "characters3d.com___L_Little_Distal"
+		]
+
 		for finger_name in left_fingers:
 			var bone_id = skeleton.find_bone(finger_name)
 			if bone_id >= 0:
-				var bone_pose = skeleton.get_bone_pose(bone_id)
-				var bend_angle = deg_to_rad(60) * grip_amount
+				var bend_angle = deg_to_rad(-30) * grip_amount
 				if "Thumb" in finger_name:
-					bend_angle = deg_to_rad(45) * grip_amount
-				bone_pose.basis = bone_pose.basis.rotated(Vector3(1, 0, 0), bend_angle)
-				skeleton.set_bone_pose(bone_id, bone_pose)
+					bend_angle = deg_to_rad(-25) * grip_amount
+
+				var rotation = Quaternion(Vector3(0, 0, 1), bend_angle)
+				skeleton.set_bone_pose_rotation(bone_id, rotation)
 
 func _update_weapon_to_hand():
 	"""Set weapon local position and rotation for proper grip alignment"""
