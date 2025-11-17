@@ -2187,33 +2187,47 @@ func _update_weapon_ik_targets(delta: float):
 		# Hand rotation removed - weapon orientation controlled by _update_weapon_to_hand()
 		# IK only controls hand position, not rotation
 
-	# Update left hand IK target ONLY for two-handed weapons (rifles)
-	# Pistols don't use left hand IK - left arm IK is completely disabled for pistols
+	# Update left hand IK target for two-handed weapons (rifles) and pistols when aiming
 	var left_hand_target = ik_targets_node.get_node_or_null("LeftHandTarget")
-	if left_hand_target and equipped_weapon.is_two_handed:
-		# Two-handed weapon (rifle/assault rifle): Position left hand for foregrip
-		# Left hand should be higher and further forward than right hand
-		if equipped_weapon.secondary_grip:
-			# If weapon has a secondary grip node, use it as base
-			var target_pos = equipped_weapon.secondary_grip.global_position
-			left_hand_target.global_position = left_hand_target.global_position.lerp(target_pos, ik_transition_speed * delta)
-		else:
-			# No secondary grip - calculate position relative to right hand
-			# Position left hand forward and slightly up from right hand
-			# Use full camera basis so left hand follows aim direction
-			var camera_basis = active_camera.global_transform.basis
+	if left_hand_target:
+		if equipped_weapon.is_two_handed:
+			# Two-handed weapon (rifle/assault rifle): Position left hand for foregrip
+			# Left hand should be higher and further forward than right hand
+			if equipped_weapon.secondary_grip:
+				# If weapon has a secondary grip node, use it as base
+				var target_pos = equipped_weapon.secondary_grip.global_position
+				left_hand_target.global_position = left_hand_target.global_position.lerp(target_pos, ik_transition_speed * delta)
+			else:
+				# No secondary grip - calculate position relative to right hand
+				# Position left hand forward and slightly up from right hand
+				# Use full camera basis so left hand follows aim direction
+				var camera_basis = active_camera.global_transform.basis
 
-			# Start from right hand target position
+				# Start from right hand target position
+				var right_hand_pos: Vector3 = right_hand_target.global_position if right_hand_target else global_position
+
+				# Offset for assault rifle foregrip:
+				# - Forward (along weapon barrel): 0.35m in front of right hand
+				# - Up: 0.05m higher than right hand
+				# - No left/right offset (centerline)
+				var foregrip_offset = Vector3(0.0, 0.05, -0.35)  # Higher and forward
+
+				# Apply camera-relative offset so left hand follows aim
+				var left_hand_pos = right_hand_pos + camera_basis * foregrip_offset
+				left_hand_target.global_position = left_hand_target.global_position.lerp(left_hand_pos, ik_transition_speed * delta)
+		elif weapon_state == WeaponState.AIMING:
+			# Pistol when aiming: Two-handed support grip
+			# Left hand supports from below right hand
+			var camera_basis = active_camera.global_transform.basis
 			var right_hand_pos: Vector3 = right_hand_target.global_position if right_hand_target else global_position
 
-			# Offset for assault rifle foregrip:
-			# - Forward (along weapon barrel): 0.35m in front of right hand
-			# - Up: 0.05m higher than right hand
-			# - No left/right offset (centerline)
-			var foregrip_offset = Vector3(0.0, 0.05, -0.35)  # Higher and forward
+			# Offset for pistol support grip:
+			# - Down: 0.08m below right hand
+			# - Forward: 0.05m forward to wrap under trigger guard
+			# - Right: 0.03m to the right (crosses under) to create elbow bend
+			var support_grip_offset = Vector3(0.03, -0.08, -0.05)  # Right, down, forward
 
-			# Apply camera-relative offset so left hand follows aim
-			var left_hand_pos = right_hand_pos + camera_basis * foregrip_offset
+			var left_hand_pos = right_hand_pos + camera_basis * support_grip_offset
 			left_hand_target.global_position = left_hand_target.global_position.lerp(left_hand_pos, ik_transition_speed * delta)
 
 		# Hand rotation removed - weapon orientation controlled by _update_weapon_to_hand()
@@ -2314,11 +2328,9 @@ func _update_weapon_to_hand():
 	# The weapon is parented to hand bone via BoneAttachment3D
 	# We need to rotate it so it points forward when hand is in pistol grip pose
 
-	# Rotate weapon so barrel points forward when hand is in grip orientation
-	# Hand is rotated for pistol grip, so weapon needs counter-rotation
-	# Rotate -90° around local Y axis to make weapon point forward
-	var weapon_rotation = Basis()
-	weapon_rotation = weapon_rotation.rotated(Vector3.UP, deg_to_rad(-90))
+	# Weapon orientation controlled by hand bone orientation
+	# No additional rotation needed - weapon points in direction of hand bone's forward axis
+	var weapon_rotation = Basis.IDENTITY
 	equipped_weapon.transform.basis = weapon_rotation
 
 	# Set local position so grip aligns with hand bone origin (if grip point exists)
@@ -2354,8 +2366,8 @@ func _process(delta):
 		# Arm IK depends on weapon equipped state
 		if equipped_weapon and weapon_state != WeaponState.SHEATHED:
 			# Weapon equipped and not sheathed - use right arm IK for holding weapon
-			# Left arm IK: only for two-handed weapons, disabled completely for pistols
-			var use_left_arm = equipped_weapon.is_two_handed
+			# Left arm IK: two-handed weapons always, pistols only when aiming
+			var use_left_arm = equipped_weapon.is_two_handed or weapon_state == WeaponState.AIMING
 			_start_arm_ik(true, use_left_arm)
 		else:
 			# No weapon or weapon sheathed - stop all arm IK (let arms rest naturally)
@@ -2364,8 +2376,8 @@ func _process(delta):
 		# IK disabled - but keep arm IK active if weapon equipped
 		if equipped_weapon and weapon_state != WeaponState.SHEATHED:
 			# Keep right arm IK active to hold weapon (not when sheathed)
-			# Left arm IK: only for two-handed weapons, disabled completely for pistols
-			var use_left_arm = equipped_weapon.is_two_handed
+			# Left arm IK: two-handed weapons always, pistols only when aiming
+			var use_left_arm = equipped_weapon.is_two_handed or weapon_state == WeaponState.AIMING
 			_start_arm_ik(true, use_left_arm)
 			_stop_foot_ik()
 		else:
