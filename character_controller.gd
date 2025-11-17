@@ -1863,7 +1863,7 @@ func _fill_gunshot_buffer(audio_player: AudioStreamPlayer3D):
 
 	for i in range(samples):
 		var t = float(i) / float(samples)
-		var time_seconds = float(i) / mix_rate
+		var _time_seconds = float(i) / mix_rate  # Reserved for future time-based effects
 
 		# Multi-stage envelope for realistic gunshot
 		var attack = 1.0 - smoothstep(0.0, 0.02, t)  # Very sharp initial attack (20ms)
@@ -2152,7 +2152,7 @@ func _update_weapon_ik_targets():
 	else:
 		anchor_transform = global_transform
 
-	# Check if character is moving for sway calculation
+	# Calculate weapon sway (natural movement) - weapon stays centered with camera
 	var character_moving = velocity.length() > 0.1
 	current_sway = _calculate_weapon_sway(get_process_delta_time(), character_moving)
 
@@ -2170,7 +2170,7 @@ func _update_weapon_ik_targets():
 	# Position right hand IK target to follow FULL CAMERA DIRECTION
 	var right_hand_target = ik_targets_node.get_node_or_null("RightHandTarget")
 	if right_hand_target:
-		var base_offset = target_offset + current_sway
+		var base_offset = target_offset + current_sway  # Add sway for natural movement
 
 		# Use FULL camera transform basis (includes pitch, yaw, roll)
 		# This ensures hand moves to keep weapon aligned with camera line of sight
@@ -2184,16 +2184,15 @@ func _update_weapon_ik_targets():
 
 		# Set hand target rotation for proper pistol grip
 		# For right hand pistol grip, rotate hand so palm faces inward
-		# Build custom basis: thumb up, palm faces left, back of hand faces right
 		var camera_forward = -camera_basis.z
 		var camera_right = camera_basis.x
 		var camera_up = camera_basis.y
 
-		# Create grip orientation:
-		# X = thumb (up), Y = back of hand (forward), Z = palm normal (left/inward)
-		var hand_right = camera_up  # Thumb points up
-		var hand_up = camera_forward  # Back of hand faces forward
-		var hand_forward = -camera_right  # Palm faces left/inward
+		# Create proper grip orientation:
+		# X = right side of hand, Y = up (knuckles), Z = palm normal (inward)
+		var hand_right = camera_right  # Hand's right points to camera right
+		var hand_up = camera_up  # Knuckles/thumb point up
+		var hand_forward = -camera_forward  # Palm faces inward toward body
 
 		var hand_basis = Basis(hand_right, hand_up, hand_forward)
 		right_hand_target.global_transform.basis = hand_basis
@@ -2247,6 +2246,21 @@ func _update_weapon_ik_targets():
 				if l_hand_id >= 0:
 					var left_hand_rest = skeleton.global_transform * skeleton.get_bone_rest(l_hand_id).origin
 					left_hand_target.global_position = left_hand_rest
+
+		# Set left hand rotation for proper grip (mirror of right hand for support)
+		if equipped_weapon and (equipped_weapon.is_two_handed or weapon_state == WeaponState.AIMING):
+			var camera_basis = active_camera.global_transform.basis
+			var camera_forward = -camera_basis.z
+			var camera_right = camera_basis.x
+			var camera_up = camera_basis.y
+
+			# Left hand grips from the left side, palm faces right (toward gun)
+			var left_hand_right = -camera_right  # Left hand's right points left
+			var left_hand_up = camera_up  # Knuckles/thumb point up
+			var left_hand_forward = camera_forward  # Palm faces right toward gun
+
+			var left_hand_basis = Basis(left_hand_right, left_hand_up, left_hand_forward)
+			left_hand_target.global_transform.basis = left_hand_basis
 
 	# Update arm IK targets for proper arm positioning
 	var right_upper_arm_target = ik_targets_node.get_node_or_null("RightUpperArmTarget")
