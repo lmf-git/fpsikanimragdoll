@@ -450,6 +450,7 @@ func _stop_foot_ik():
 
 func _debug_ik_positions():
 	"""Debug output for IK target positions when aiming - helps with weapon positioning"""
+	var ik_targets_node = get_node_or_null("IKTargets")
 	if not ik_targets_node:
 		return
 
@@ -2489,8 +2490,9 @@ func _process(delta):
 			_stop_foot_ik()
 
 	# STEP 3: Apply hand grip pose (close fingers)
-	if equipped_weapon and weapon_state != WeaponState.SHEATHED:
-		_apply_hand_grip_pose()
+	# DISABLED: Causing hands to spin - needs fix
+	#if equipped_weapon and weapon_state != WeaponState.SHEATHED:
+	#	_apply_hand_grip_pose()
 
 	# STEP 4: Override weapon orientation to match camera aim direction
 	# This prevents gun from rotating opposite to arm movement
