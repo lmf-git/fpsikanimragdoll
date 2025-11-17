@@ -97,6 +97,7 @@ var is_aim_toggled: bool = false  # Toggle for aiming (Ctrl+RightClick)
 @export var ready_weapon_offset: Vector3 = Vector3(0.25, 0.2, -1.6)  # Offset when ready/moving (higher and further forward)
 @export var sheathed_weapon_offset: Vector3 = Vector3(0.5, -0.6, 0.2)  # Offset when sheathed at side
 @export var weapon_transition_speed: float = 8.0  # Speed of state transitions
+@export var ik_transition_speed: float = 15.0  # Speed of IK target position transitions
 
 # Weapon sway
 @export var sway_amount: float = 0.05  # Amount of sway
@@ -2131,7 +2132,7 @@ func _calculate_weapon_sway(delta: float, moving: bool) -> Vector3:
 
 	return Vector3(sway_x, sway_y, 0)
 
-func _update_weapon_ik_targets():
+func _update_weapon_ik_targets(delta: float):
 	"""Set IK target positions for weapon holding (called BEFORE IK is applied)"""
 	if not equipped_weapon or not skeleton or right_hand_bone_id < 0:
 		return
@@ -2180,7 +2181,8 @@ func _update_weapon_ik_targets():
 		var final_offset = base_offset + current_hand_recoil
 		var target_pos = anchor_transform.origin + camera_basis * final_offset
 
-		right_hand_target.global_position = target_pos
+		# Smooth transition to target position
+		right_hand_target.global_position = right_hand_target.global_position.lerp(target_pos, ik_transition_speed * delta)
 
 		# Set hand target rotation for proper pistol grip
 		# For right hand pistol grip, rotate hand so palm faces inward
@@ -2195,7 +2197,11 @@ func _update_weapon_ik_targets():
 		var hand_forward = -camera_forward  # Palm faces inward toward body
 
 		var hand_basis = Basis(hand_right, hand_up, hand_forward)
-		right_hand_target.global_transform.basis = hand_basis
+		# Smooth rotation transition using quaternion slerp
+		var current_quat = Quaternion(right_hand_target.global_transform.basis)
+		var target_quat = Quaternion(hand_basis)
+		var new_quat = current_quat.slerp(target_quat, ik_transition_speed * delta)
+		right_hand_target.global_transform.basis = Basis(new_quat)
 
 	# Update left hand IK target ONLY for two-handed weapons (rifles)
 	var left_hand_target = ik_targets_node.get_node_or_null("LeftHandTarget")
@@ -2205,7 +2211,8 @@ func _update_weapon_ik_targets():
 			# Left hand should be higher and further forward than right hand
 			if equipped_weapon.secondary_grip:
 				# If weapon has a secondary grip node, use it as base
-				left_hand_target.global_position = equipped_weapon.secondary_grip.global_position
+				var target_pos = equipped_weapon.secondary_grip.global_position
+				left_hand_target.global_position = left_hand_target.global_position.lerp(target_pos, ik_transition_speed * delta)
 			else:
 				# No secondary grip - calculate position relative to right hand
 				# Position left hand forward and slightly up from right hand
@@ -2223,7 +2230,7 @@ func _update_weapon_ik_targets():
 
 				# Apply camera-relative offset so left hand follows aim
 				var left_hand_pos = right_hand_pos + camera_basis * foregrip_offset
-				left_hand_target.global_position = left_hand_pos
+				left_hand_target.global_position = left_hand_target.global_position.lerp(left_hand_pos, ik_transition_speed * delta)
 		else:
 			# Pistol (one-handed): Left hand only supports when aiming, not during hip fire
 			# Left hand should be below and slightly forward of right hand for proper pistol grip
@@ -2239,13 +2246,13 @@ func _update_weapon_ik_targets():
 				var support_grip_offset = Vector3(0.03, -0.08, -0.05)  # Right, down, forward
 
 				var left_hand_pos = right_hand_pos + camera_basis * support_grip_offset
-				left_hand_target.global_position = left_hand_pos
+				left_hand_target.global_position = left_hand_target.global_position.lerp(left_hand_pos, ik_transition_speed * delta)
 			else:
 				# When hip firing (READY) or sheathed, left hand goes to rest position (one-handed grip)
 				var l_hand_id = skeleton.find_bone("characters3d.com___L_Hand")
 				if l_hand_id >= 0:
 					var left_hand_rest = skeleton.global_transform * skeleton.get_bone_rest(l_hand_id).origin
-					left_hand_target.global_position = left_hand_rest
+					left_hand_target.global_position = left_hand_target.global_position.lerp(left_hand_rest, ik_transition_speed * delta)
 
 		# Set left hand rotation for proper grip (mirror of right hand for support)
 		if equipped_weapon and (equipped_weapon.is_two_handed or weapon_state == WeaponState.AIMING):
@@ -2260,10 +2267,17 @@ func _update_weapon_ik_targets():
 			var left_hand_forward = camera_forward  # Palm faces right toward gun
 
 			var left_hand_basis = Basis(left_hand_right, left_hand_up, left_hand_forward)
-			left_hand_target.global_transform.basis = left_hand_basis
+			# Smooth rotation transition using quaternion slerp
+			var current_quat = Quaternion(left_hand_target.global_transform.basis)
+			var target_quat = Quaternion(left_hand_basis)
+			var new_quat = current_quat.slerp(target_quat, ik_transition_speed * delta)
+			left_hand_target.global_transform.basis = Basis(new_quat)
 		else:
 			# Reset left hand rotation to identity when not gripping weapon (sheathed or ready)
-			left_hand_target.global_transform.basis = Basis.IDENTITY
+			var current_quat = Quaternion(left_hand_target.global_transform.basis)
+			var target_quat = Quaternion(Basis.IDENTITY)
+			var new_quat = current_quat.slerp(target_quat, ik_transition_speed * delta)
+			left_hand_target.global_transform.basis = Basis(new_quat)
 
 	# Update arm IK targets for proper arm positioning
 	var right_upper_arm_target = ik_targets_node.get_node_or_null("RightUpperArmTarget")
@@ -2290,7 +2304,7 @@ func _update_weapon_ik_targets():
 		var upper_arm_pos = anchor_transform.origin + chest_to_hand * 0.2  # 20% toward hand
 		upper_arm_pos += aim_right * 0.15  # Slight outward offset
 		upper_arm_pos += aim_down * 0.05   # Slight downward offset
-		right_upper_arm_target.global_position = upper_arm_pos
+		right_upper_arm_target.global_position = right_upper_arm_target.global_position.lerp(upper_arm_pos, ik_transition_speed * delta)
 
 		# Position elbow target (between upper arm and hand)
 		# Elbow at 50% between shoulder and hand
@@ -2299,12 +2313,12 @@ func _update_weapon_ik_targets():
 		# Offset to the right and down for natural arm bend
 		elbow_pos += aim_right * 0.4    # Further outward for weapon holding
 		elbow_pos += aim_down * 0.15    # Slightly more downward offset
-		right_elbow_target.global_position = elbow_pos
+		right_elbow_target.global_position = right_elbow_target.global_position.lerp(elbow_pos, ik_transition_speed * delta)
 
 		# Wrist target is just for visualization now (wrist IK uses hand_target)
 		# Position it between elbow and hand for visual reference
 		var wrist_pos = right_elbow_target.global_position.lerp(right_hand_target.global_position, 0.6)
-		right_wrist_target.global_position = wrist_pos
+		right_wrist_target.global_position = right_wrist_target.global_position.lerp(wrist_pos, ik_transition_speed * delta)
 
 	# FINGER POSITIONING: Disabled - finger IK creates circular dependency with weapon
 	# Hand rotation alone provides proper grip orientation without conflicts
@@ -2337,11 +2351,11 @@ func _update_weapon_ik_targets():
 			elbow_pos += aim_right * -0.25   # Outward offset
 			elbow_pos += aim_down * 0.12     # Downward offset
 
-			left_elbow_target.global_position = elbow_pos
+			left_elbow_target.global_position = left_elbow_target.global_position.lerp(elbow_pos, ik_transition_speed * delta)
 
 			# Wrist target is just for visualization now (wrist IK uses hand_target)
 			var wrist_pos = left_elbow_target.global_position.lerp(left_hand_target.global_position, 0.6)
-			left_wrist_target.global_position = wrist_pos
+			left_wrist_target.global_position = left_wrist_target.global_position.lerp(wrist_pos, ik_transition_speed * delta)
 		else:
 			# Pistol hip fire: left arm stays at rest position
 			var l_elbow_id = skeleton.find_bone("characters3d.com___L_Lower_Arm")
@@ -2349,8 +2363,8 @@ func _update_weapon_ik_targets():
 			if l_elbow_id >= 0 and l_wrist_id >= 0:
 				var left_elbow_rest = skeleton.global_transform * skeleton.get_bone_rest(l_elbow_id).origin
 				var left_wrist_rest = skeleton.global_transform * skeleton.get_bone_rest(l_wrist_id).origin
-				left_elbow_target.global_position = left_elbow_rest
-				left_wrist_target.global_position = left_wrist_rest
+				left_elbow_target.global_position = left_elbow_target.global_position.lerp(left_elbow_rest, ik_transition_speed * delta)
+				left_wrist_target.global_position = left_wrist_target.global_position.lerp(left_wrist_rest, ik_transition_speed * delta)
 
 func _update_weapon_to_hand():
 	"""Set weapon local position and rotation for proper grip alignment"""
@@ -2390,7 +2404,7 @@ func _process(delta):
 
 	# STEP 1: Set IK targets for weapon holding
 	if equipped_weapon:
-		_update_weapon_ik_targets()
+		_update_weapon_ik_targets(delta)
 
 	# STEP 2: Apply IK - start() moves bones to targets
 	if ik_enabled:
