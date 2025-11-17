@@ -91,6 +91,7 @@ enum WeaponState { SHEATHED, READY, AIMING }
 var weapon_state: WeaponState = WeaponState.READY
 var is_weapon_sheathed: bool = false  # Toggle for sheathed state
 var is_aim_toggled: bool = false  # Toggle for aiming (Ctrl+RightClick)
+var is_freelook_active: bool = false  # Freelook mode (Alt key held)
 
 # Weapon positioning - skeleton-relative offsets
 @export var aim_weapon_offset: Vector3 = Vector3(0.0, 0.45, -1.8)  # Offset when aiming down sights (centered, higher, further forward)
@@ -1047,6 +1048,10 @@ func _input(event):
 			weapon_state = WeaponState.SHEATHED if is_weapon_sheathed else WeaponState.READY
 			print("Weapon ", "sheathed" if is_weapon_sheathed else "ready")
 
+	# Alt key for freelook mode (head turns before body)
+	if event is InputEventKey and event.keycode == KEY_ALT:
+		is_freelook_active = event.pressed
+
 	if event.is_action_pressed("ui_cancel"):
 		if Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED:
 			Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
@@ -1273,18 +1278,25 @@ func _physics_process(delta):
 	# Get input direction
 	var input_dir = Input.get_vector("move_left", "move_right", "move_forward", "move_back")
 
-	# Update body rotation - smoothly follow camera or snap when moving
+	# Update body rotation - behavior depends on weapon equipped and freelook mode
 	var head_yaw_difference = angle_difference(body_rotation_y, camera_rotation.y)
 
+	# Determine if freelook should be active (head turns before body)
+	var use_freelook = (not equipped_weapon or is_freelook_active)
+
 	# If moving, body faces movement direction immediately
-	# If standing still, body turns when head exceeds threshold
+	# If standing still with freelook: body turns only when head exceeds threshold
+	# If weapon equipped (no freelook): body always follows camera
 	if input_dir.length() > 0.1:
 		# When moving, body follows camera direction
 		body_rotation_y = lerp_angle(body_rotation_y, camera_rotation.y, body_rotation_speed * delta)
-	else:
-		# When standing still, only turn body if head turned too far
+	elif use_freelook:
+		# Freelook mode: body only turns when head turned too far
 		if abs(head_yaw_difference) > deg_to_rad(free_look_threshold):
 			body_rotation_y = lerp_angle(body_rotation_y, camera_rotation.y, body_rotation_speed * delta * 0.5)
+	else:
+		# Weapon equipped, no freelook: body follows camera immediately (tight coupling)
+		body_rotation_y = lerp_angle(body_rotation_y, camera_rotation.y, body_rotation_speed * delta)
 
 	# Apply body rotation
 	rotation.y = body_rotation_y
