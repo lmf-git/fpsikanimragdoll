@@ -2186,15 +2186,16 @@ func _update_weapon_ik_targets(delta: float):
 
 		# Set hand target rotation for proper pistol grip
 		# For right hand pistol grip, rotate hand so palm faces inward
+		# Build custom basis: thumb up, palm faces left, back of hand faces right
 		var camera_forward = -camera_basis.z
 		var camera_right = camera_basis.x
 		var camera_up = camera_basis.y
 
-		# Create proper grip orientation:
-		# X = right side of hand, Y = up (knuckles), Z = palm normal (inward)
-		var hand_right = camera_right  # Hand's right points to camera right
-		var hand_up = camera_up  # Knuckles/thumb point up
-		var hand_forward = -camera_forward  # Palm faces inward toward body
+		# Create grip orientation:
+		# X = thumb (up), Y = back of hand (forward), Z = palm normal (left/inward)
+		var hand_right = camera_up  # Thumb points up
+		var hand_up = camera_forward  # Back of hand faces forward
+		var hand_forward = -camera_right  # Palm faces left/inward
 
 		var hand_basis = Basis(hand_right, hand_up, hand_forward)
 		# Smooth rotation transition using quaternion slerp
@@ -2262,9 +2263,10 @@ func _update_weapon_ik_targets(delta: float):
 			var camera_up = camera_basis.y
 
 			# Left hand grips from the left side, palm faces right (toward gun)
-			var left_hand_right = -camera_right  # Left hand's right points left
-			var left_hand_up = camera_up  # Knuckles/thumb point up
-			var left_hand_forward = camera_forward  # Palm faces right toward gun
+			# Mirror of right hand: thumb up, back of hand forward, palm faces right/inward
+			var left_hand_right = camera_up  # Thumb points up (same as right hand)
+			var left_hand_up = camera_forward  # Back of hand faces forward (same as right hand)
+			var left_hand_forward = camera_right  # Palm faces right/inward (opposite of right hand)
 
 			var left_hand_basis = Basis(left_hand_right, left_hand_up, left_hand_forward)
 			# Smooth rotation transition using quaternion slerp
@@ -2414,7 +2416,8 @@ func _process(delta):
 		# Arm IK depends on weapon equipped state
 		if equipped_weapon:
 			# Weapon equipped - use right arm IK for holding weapon
-			var use_left_arm = (weapon_state == WeaponState.AIMING)  # Two-handed when aiming
+			# Left arm IK: always for two-handed weapons, only when aiming for pistols
+			var use_left_arm = equipped_weapon.is_two_handed or (weapon_state == WeaponState.AIMING)
 			_start_arm_ik(true, use_left_arm)
 		else:
 			# No weapon - stop all arm IK
@@ -2423,7 +2426,8 @@ func _process(delta):
 		# IK disabled - but keep arm IK active if weapon equipped
 		if equipped_weapon:
 			# Keep right arm IK active to hold weapon
-			var use_left_arm = (weapon_state == WeaponState.AIMING)  # Two-handed when aiming
+			# Left arm IK: always for two-handed weapons, only when aiming for pistols
+			var use_left_arm = equipped_weapon.is_two_handed or (weapon_state == WeaponState.AIMING)
 			_start_arm_ik(true, use_left_arm)
 			_stop_foot_ik()
 		else:
