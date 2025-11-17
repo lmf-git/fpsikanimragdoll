@@ -2261,6 +2261,9 @@ func _update_weapon_ik_targets():
 
 			var left_hand_basis = Basis(left_hand_right, left_hand_up, left_hand_forward)
 			left_hand_target.global_transform.basis = left_hand_basis
+		else:
+			# Reset left hand rotation to identity when not gripping weapon (sheathed or ready)
+			left_hand_target.global_transform.basis = Basis.IDENTITY
 
 	# Update arm IK targets for proper arm positioning
 	var right_upper_arm_target = ik_targets_node.get_node_or_null("RightUpperArmTarget")
