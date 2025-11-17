@@ -2320,26 +2320,84 @@ func _update_weapon_ik_targets(delta: float):
 				left_elbow_target.global_position = left_elbow_target.global_position.lerp(left_elbow_rest, ik_transition_speed * delta)
 				left_wrist_target.global_position = left_wrist_target.global_position.lerp(left_wrist_rest, ik_transition_speed * delta)
 
+func _apply_hand_grip_pose():
+	"""Apply finger bending for weapon grip pose"""
+	if not skeleton or not equipped_weapon:
+		return
+
+	# Grip strength (how much to bend fingers)
+	var grip_amount = 0.8  # 0.0 = open hand, 1.0 = closed fist
+
+	# Right hand finger bones - bend for grip
+	var right_fingers = [
+		"characters3d.com___R_Thumb_Proximal", "characters3d.com___R_Thumb_Intermediate",
+		"characters3d.com___R_Index_Proximal", "characters3d.com___R_Index_Intermediate", "characters3d.com___R_Index_Distal",
+		"characters3d.com___R_Middle_Proximal", "characters3d.com___R_Middle_Intermediate", "characters3d.com___R_Middle_Distal",
+		"characters3d.com___R_Ring_Proximal", "characters3d.com___R_Ring_Intermediate", "characters3d.com___R_Ring_Distal",
+		"characters3d.com___R_Little_Proximal", "characters3d.com___R_Little_Intermediate", "characters3d.com___R_Little_Distal"
+	]
+
+	# Left hand finger bones - bend when using two hands
+	var left_fingers = [
+		"characters3d.com___L_Thumb_Proximal", "characters3d.com___L_Thumb_Intermediate",
+		"characters3d.com___L_Index_Proximal", "characters3d.com___L_Index_Intermediate", "characters3d.com___L_Index_Distal",
+		"characters3d.com___L_Middle_Proximal", "characters3d.com___L_Middle_Intermediate", "characters3d.com___L_Middle_Distal",
+		"characters3d.com___L_Ring_Proximal", "characters3d.com___L_Ring_Intermediate", "characters3d.com___L_Ring_Distal",
+		"characters3d.com___L_Little_Proximal", "characters3d.com___L_Little_Intermediate", "characters3d.com___L_Little_Distal"
+	]
+
+	# Apply grip to right hand (always when weapon equipped)
+	for finger_name in right_fingers:
+		var bone_id = skeleton.find_bone(finger_name)
+		if bone_id >= 0:
+			var bone_pose = skeleton.get_bone_pose(bone_id)
+			# Bend fingers inward (rotate around X axis)
+			var bend_angle = deg_to_rad(60) * grip_amount  # 60 degrees per joint
+			if "Thumb" in finger_name:
+				bend_angle = deg_to_rad(45) * grip_amount  # Thumb bends less
+			bone_pose.basis = bone_pose.basis.rotated(Vector3(1, 0, 0), bend_angle)
+			skeleton.set_bone_pose(bone_id, bone_pose)
+
+	# Apply grip to left hand (only when two-handed or aiming)
+	if equipped_weapon.is_two_handed or weapon_state == WeaponState.AIMING:
+		for finger_name in left_fingers:
+			var bone_id = skeleton.find_bone(finger_name)
+			if bone_id >= 0:
+				var bone_pose = skeleton.get_bone_pose(bone_id)
+				var bend_angle = deg_to_rad(60) * grip_amount
+				if "Thumb" in finger_name:
+					bend_angle = deg_to_rad(45) * grip_amount
+				bone_pose.basis = bone_pose.basis.rotated(Vector3(1, 0, 0), bend_angle)
+				skeleton.set_bone_pose(bone_id, bone_pose)
+
 func _update_weapon_to_hand():
 	"""Set weapon local position and rotation for proper grip alignment"""
 	if not equipped_weapon:
 		return
 
-	# The weapon is parented to hand bone via BoneAttachment3D
-	# We need to rotate it so it points forward when hand is in pistol grip pose
+	# Get active camera for weapon orientation
+	var active_camera = fps_camera if camera_mode == 0 else tps_camera
+	if not active_camera:
+		return
 
-	# Weapon orientation controlled by hand bone orientation
-	# No additional rotation needed - weapon points in direction of hand bone's forward axis
-	var weapon_rotation = Basis.IDENTITY
-	equipped_weapon.transform.basis = weapon_rotation
+	# Override weapon rotation to DIRECTLY follow camera (no deadzone/lag)
+	# Weapon points in camera forward direction, ignoring hand bone rotation
+	var camera_basis = active_camera.global_transform.basis
 
-	# Set local position so grip aligns with hand bone origin (if grip point exists)
+	# Get hand bone global transform for position reference
+	var hand_global_transform = right_hand_attachment.global_transform if right_hand_attachment else global_transform
+
+	# Set weapon to face camera direction (no lag, always centered)
+	equipped_weapon.global_transform.basis = camera_basis
+
+	# Position weapon at hand location with grip offset
 	if equipped_weapon.main_grip and equipped_weapon.main_grip.position != null:
 		var grip_local_pos = equipped_weapon.main_grip.position
-		equipped_weapon.transform.origin = -(weapon_rotation * grip_local_pos)
+		var grip_offset_rotated = camera_basis * grip_local_pos
+		equipped_weapon.global_position = hand_global_transform.origin - grip_offset_rotated
 	else:
 		# No grip point - use weapon origin
-		equipped_weapon.transform.origin = Vector3.ZERO
+		equipped_weapon.global_position = hand_global_transform.origin
 
 # ============================================================================
 # MAIN LOOP - PROCESS (Visual Updates & IK)
@@ -2385,12 +2443,16 @@ func _process(delta):
 			_stop_arm_ik(true, true)
 			_stop_foot_ik()
 
-	# STEP 3: Override weapon orientation to match camera aim direction
+	# STEP 3: Apply hand grip pose (close fingers)
+	if equipped_weapon and weapon_state != WeaponState.SHEATHED:
+		_apply_hand_grip_pose()
+
+	# STEP 4: Override weapon orientation to match camera aim direction
 	# This prevents gun from rotating opposite to arm movement
 	if equipped_weapon:
 		_update_weapon_to_hand()
 
-	# STEP 4: Handle automatic fire
+	# STEP 5: Handle automatic fire
 	# If trigger is held and weapon is full auto, shoot continuously
 	if is_trigger_held and equipped_weapon:
 		if equipped_weapon.fire_mode == Weapon.FireMode.FULL_AUTO:
