@@ -2199,8 +2199,17 @@ func _update_weapon_ik_targets(delta: float):
 		# Smooth transition to target position
 		right_hand_target.global_position = right_hand_target.global_position.lerp(target_pos, ik_transition_speed * delta)
 
-		# Hand rotation removed - weapon orientation controlled by _update_weapon_to_hand()
-		# IK only controls hand position, not rotation
+		# Set hand rotation to orient palm correctly for grip
+		# Palm should face left (toward body), fingers point forward
+		# Camera basis gives us the weapon orientation, then rotate hand to grip position
+		var hand_basis = camera_basis
+
+		# Rotate hand so palm faces inward (left) for proper grip
+		# This rotates around the Z axis (forward) to turn the palm from facing down to facing left
+		var palm_rotation = Basis(Vector3(0, 0, 1), deg_to_rad(90))  # Rotate 90° to face palm left
+		hand_basis = hand_basis * palm_rotation
+
+		right_hand_target.global_transform.basis = hand_basis
 
 	# Update left hand IK target for two-handed weapons (rifles) and pistols when aiming
 	var left_hand_target = ik_targets_node.get_node_or_null("LeftHandTarget")
@@ -2208,6 +2217,8 @@ func _update_weapon_ik_targets(delta: float):
 		if equipped_weapon.is_two_handed:
 			# Two-handed weapon (rifle/assault rifle): Position left hand for foregrip
 			# Left hand should be higher and further forward than right hand
+			var camera_basis = active_camera.global_transform.basis
+
 			if equipped_weapon.secondary_grip:
 				# If weapon has a secondary grip node, use it as base
 				var target_pos = equipped_weapon.secondary_grip.global_position
@@ -2215,9 +2226,6 @@ func _update_weapon_ik_targets(delta: float):
 			else:
 				# No secondary grip - calculate position relative to right hand
 				# Position left hand forward and slightly up from right hand
-				# Use full camera basis so left hand follows aim direction
-				var camera_basis = active_camera.global_transform.basis
-
 				# Start from right hand target position
 				var right_hand_pos: Vector3 = right_hand_target.global_position if right_hand_target else global_position
 
@@ -2230,6 +2238,12 @@ func _update_weapon_ik_targets(delta: float):
 				# Apply camera-relative offset so left hand follows aim
 				var left_hand_pos = right_hand_pos + camera_basis * foregrip_offset
 				left_hand_target.global_position = left_hand_target.global_position.lerp(left_hand_pos, ik_transition_speed * delta)
+
+			# Set left hand rotation for foregrip (palm faces right, opposite of right hand)
+			var left_hand_basis = camera_basis
+			var left_palm_rotation = Basis(Vector3(0, 0, 1), deg_to_rad(-90))  # Rotate -90° to face palm right
+			left_hand_basis = left_hand_basis * left_palm_rotation
+			left_hand_target.global_transform.basis = left_hand_basis
 		elif weapon_state == WeaponState.AIMING:
 			# Pistol when aiming: Two-handed support grip
 			# Left hand supports from below right hand
@@ -2245,8 +2259,11 @@ func _update_weapon_ik_targets(delta: float):
 			var left_hand_pos = right_hand_pos + camera_basis * support_grip_offset
 			left_hand_target.global_position = left_hand_target.global_position.lerp(left_hand_pos, ik_transition_speed * delta)
 
-		# Hand rotation removed - weapon orientation controlled by _update_weapon_to_hand()
-		# IK only controls hand position, not rotation
+			# Set left hand rotation for support grip (palm faces right and up to cup under grip)
+			var left_hand_basis = camera_basis
+			var left_palm_rotation = Basis(Vector3(0, 0, 1), deg_to_rad(-90))  # Face palm right
+			left_hand_basis = left_hand_basis * left_palm_rotation
+			left_hand_target.global_transform.basis = left_hand_basis
 
 	# Update arm IK targets for proper arm positioning
 	var right_upper_arm_target = ik_targets_node.get_node_or_null("RightUpperArmTarget")
@@ -2486,9 +2503,8 @@ func _process(delta):
 			_stop_foot_ik()
 
 	# STEP 3: Apply hand grip pose (close fingers)
-	# DISABLED: Causing hands to spin - needs fix
-	#if equipped_weapon and weapon_state != WeaponState.SHEATHED:
-	#	_apply_hand_grip_pose()
+	if equipped_weapon and weapon_state != WeaponState.SHEATHED:
+		_apply_hand_grip_pose()
 
 	# STEP 4: Override weapon orientation to match camera aim direction
 	# This prevents gun from rotating opposite to arm movement
