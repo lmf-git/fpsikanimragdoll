@@ -2082,10 +2082,12 @@ func _apply_partial_ragdoll(bone_name: String, impulse: Vector3):
 		print("  Physical bone not found!")
 		return
 
-	# Enable physics simulation on this bone temporarily
-	physical_bone.simulate_physics = true
+	# In Godot 4, PhysicalBone3D simulation is controlled by the skeleton
+	# Start simulation for all bones, then apply impulse to the specific one
+	if not ragdoll_enabled:
+		skeleton.physical_bones_start_simulation()
 
-	# Apply impulse
+	# Apply impulse to the hit bone
 	physical_bone.apply_central_impulse(impulse)
 
 	# Schedule recovery (return to normal after delay)
@@ -2097,7 +2099,9 @@ func _apply_partial_ragdoll(bone_name: String, impulse: Vector3):
 func _recover_bone(physical_bone: PhysicalBone3D):
 	"""Recover a bone from ragdoll state"""
 	if physical_bone and is_instance_valid(physical_bone):
-		physical_bone.simulate_physics = false
+		# Stop all physics simulation to recover
+		if not ragdoll_enabled:
+			skeleton.physical_bones_stop_simulation()
 		print("Recovered bone: ", physical_bone.bone_name)
 
 func drop_weapon():
@@ -2443,8 +2447,17 @@ func _update_weapon_to_hand():
 	# Weapon points in camera forward direction, ignoring hand bone rotation
 	var camera_basis = active_camera.global_transform.basis
 
-	# Get hand bone global transform for position reference
-	var hand_global_transform = right_hand_attachment.global_transform if right_hand_attachment else global_transform
+	# Use IK target position instead of bone position for more precise placement
+	# This eliminates gap between hand and weapon
+	var hand_position: Vector3
+	if ik_targets_node:
+		var right_hand_target = ik_targets_node.get_node_or_null("RightHandTarget")
+		if right_hand_target:
+			hand_position = right_hand_target.global_position
+		else:
+			hand_position = right_hand_attachment.global_transform.origin if right_hand_attachment else global_position
+	else:
+		hand_position = right_hand_attachment.global_transform.origin if right_hand_attachment else global_position
 
 	# Set weapon to face camera direction (no lag, always centered)
 	equipped_weapon.global_transform.basis = camera_basis
@@ -2453,10 +2466,10 @@ func _update_weapon_to_hand():
 	if equipped_weapon.main_grip and equipped_weapon.main_grip.position != null:
 		var grip_local_pos = equipped_weapon.main_grip.position
 		var grip_offset_rotated = camera_basis * grip_local_pos
-		equipped_weapon.global_position = hand_global_transform.origin - grip_offset_rotated
+		equipped_weapon.global_position = hand_position - grip_offset_rotated
 	else:
 		# No grip point - use weapon origin
-		equipped_weapon.global_position = hand_global_transform.origin
+		equipped_weapon.global_position = hand_position
 
 # ============================================================================
 # MAIN LOOP - PROCESS (Visual Updates & IK)

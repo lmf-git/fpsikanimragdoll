@@ -52,11 +52,13 @@ func _apply_partial_ragdoll(bone_name: String, impulse: Vector3):
 		physical_bone.apply_central_impulse(impulse)
 		return
 
-	# Enable physics simulation on this bone
-	physical_bone.simulate_physics = true
+	# Start physics simulation if not already active
+	if active_ragdoll_bones.is_empty():
+		skeleton.physical_bones_start_simulation()
+
 	active_ragdoll_bones.append(physical_bone)
 
-	# Apply impulse
+	# Apply impulse to the hit bone
 	physical_bone.apply_central_impulse(impulse)
 
 	# Also enable nearby connected bones for more realistic effect
@@ -118,7 +120,6 @@ func _enable_connected_bones(bone_name: String, impulse: Vector3):
 				break
 
 		if physical_bone and physical_bone not in active_ragdoll_bones:
-			physical_bone.simulate_physics = true
 			active_ragdoll_bones.append(physical_bone)
 			physical_bone.apply_central_impulse(impulse * 0.3)  # Weaker impulse on connected bones
 
@@ -126,9 +127,9 @@ func _recover_all_bones():
 	"""Recover all active ragdoll bones"""
 	print("Recovering ", active_ragdoll_bones.size(), " bones...")
 
-	for bone in active_ragdoll_bones:
-		if bone and is_instance_valid(bone):
-			bone.simulate_physics = false
+	# Stop physics simulation on the skeleton
+	if not ragdoll_enabled and skeleton:
+		skeleton.physical_bones_stop_simulation()
 
 	active_ragdoll_bones.clear()
 	print("All bones recovered")
