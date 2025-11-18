@@ -1,8 +1,9 @@
-[gd_scene load_steps=8 format=3 uid="uid://world001"]
+[gd_scene load_steps=9 format=3 uid="uid://world001"]
 
 [ext_resource type="PackedScene" uid="uid://character001" path="res://character.tscn" id="1"]
 [ext_resource type="PackedScene" uid="uid://pistol001" path="res://pistol.tscn" id="2"]
 [ext_resource type="PackedScene" uid="uid://rifle001" path="res://rifle.tscn" id="3"]
+[ext_resource type="Script" path="res://dummy_target.gd" id="4"]
 
 [sub_resource type="LabelSettings" id="LabelSettings_1"]
 font_size = 24
@@ -65,6 +66,10 @@ surface_material_override/0 = SubResource("Material_ground")
 
 [node name="Character" parent="." instance=ExtResource("1")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
+
+[node name="DummyTarget" parent="." instance=ExtResource("1")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5, 1, -2)
+script = ExtResource("4")
 
 [node name="TestBoxes" type="Node3D" parent="."]
 
