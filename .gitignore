@@ -1,0 +1,62 @@
+# Godot 4.x specific ignores
+.godot/
+.import/
+
+# Godot-specific files to ignore
+*.translation
+*.import
+*.log
+
+# Mono-specific ignores (if using C#)
+.mono/
+data_*/
+mono_crash.*.json
+
+# System/Editor files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*~
+
+# User-specific files
+*.swp
+*.swo
+*~
+
+# Build results
+[Dd]ebug/
+[Rr]elease/
+x64/
+[Bb]in/
+[Oo]bj/
+
+# IDE files
+.vscode/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Crash logs
+*.stackdump
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.cache
+
+# Export presets (sensitive data)
+# Uncomment if you don't want to share export presets
+# export_presets.cfg
+
+# Addons (if using Git submodules for addons)
+# addons/*
+
+# Imported translations (automatically generated)
+*.translation

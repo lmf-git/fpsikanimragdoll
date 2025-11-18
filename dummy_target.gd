@@ -13,8 +13,17 @@ var active_ragdoll_bones: Array[PhysicalBone3D] = []
 func _ready():
 	super._ready()
 
-	# Dummy targets don't need player input
+	# Dummy targets don't need player input or processing
 	set_physics_process(false)
+	set_process(false)
+	set_process_input(false)
+	set_process_unhandled_input(false)
+
+	# Disable cameras on dummy target
+	if fps_camera:
+		fps_camera.queue_free()
+	if tps_camera:
+		tps_camera.queue_free()
 
 	# Set up as stationary target
 	print("Dummy target ready: ", name)
@@ -43,11 +52,13 @@ func _apply_partial_ragdoll(bone_name: String, impulse: Vector3):
 		physical_bone.apply_central_impulse(impulse)
 		return
 
-	# Enable physics simulation on this bone
-	physical_bone.set_simulate_physics(true)
+	# Start physics simulation if not already active
+	if active_ragdoll_bones.is_empty():
+		skeleton.physical_bones_start_simulation()
+
 	active_ragdoll_bones.append(physical_bone)
 
-	# Apply impulse
+	# Apply impulse to the hit bone
 	physical_bone.apply_central_impulse(impulse)
 
 	# Also enable nearby connected bones for more realistic effect
@@ -109,7 +120,6 @@ func _enable_connected_bones(bone_name: String, impulse: Vector3):
 				break
 
 		if physical_bone and physical_bone not in active_ragdoll_bones:
-			physical_bone.set_simulate_physics(true)
 			active_ragdoll_bones.append(physical_bone)
 			physical_bone.apply_central_impulse(impulse * 0.3)  # Weaker impulse on connected bones
 
@@ -117,9 +127,9 @@ func _recover_all_bones():
 	"""Recover all active ragdoll bones"""
 	print("Recovering ", active_ragdoll_bones.size(), " bones...")
 
-	for bone in active_ragdoll_bones:
-		if bone and is_instance_valid(bone):
-			bone.set_simulate_physics(false)
+	# Stop physics simulation on the skeleton
+	if not ragdoll_enabled and skeleton:
+		skeleton.physical_bones_stop_simulation()
 
 	active_ragdoll_bones.clear()
 	print("All bones recovered")
