@@ -118,6 +118,7 @@ func shoot(from_position: Vector3, direction: Vector3) -> Dictionary:
 	query.exclude = exclusions
 	query.collide_with_areas = false  # Don't hit IK targets even if not excluded
 	query.collide_with_bodies = true
+	query.collision_mask = 3  # Layers 1 (world) + 2 (ragdoll bones)
 
 	var result = space_state.intersect_ray(query)
 
