@@ -2083,7 +2083,7 @@ func _apply_partial_ragdoll(bone_name: String, impulse: Vector3):
 		return
 
 	# Enable physics simulation on this bone temporarily
-	physical_bone.set_simulate_physics(true)
+	physical_bone.simulate_physics = true
 
 	# Apply impulse
 	physical_bone.apply_central_impulse(impulse)
@@ -2097,7 +2097,7 @@ func _apply_partial_ragdoll(bone_name: String, impulse: Vector3):
 func _recover_bone(physical_bone: PhysicalBone3D):
 	"""Recover a bone from ragdoll state"""
 	if physical_bone and is_instance_valid(physical_bone):
-		physical_bone.set_simulate_physics(false)
+		physical_bone.simulate_physics = false
 		print("Recovered bone: ", physical_bone.bone_name)
 
 func drop_weapon():
