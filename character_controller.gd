@@ -1776,8 +1776,6 @@ func _trigger_muzzle_flash():
 	var cleanup_timer = get_tree().create_timer(1.5)
 	cleanup_timer.timeout.connect(func(): smoke.queue_free())
 
-	print("Muzzle flash and smoke at ", muzzle_position)
-
 func _create_smoke_scale_curve(start: float, peak: float, end: float) -> Curve:
 	"""Generic curve for smoke particles to grow over time"""
 	var curve = Curve.new()
@@ -2023,8 +2021,6 @@ func _create_impact_effect(impact_pos: Vector3, normal: Vector3):
 	var flash_tween = create_tween()
 	flash_tween.tween_property(flash, "light_energy", 0.0, 0.1)
 	flash_tween.tween_callback(flash.queue_free)
-
-	print("Created bullet hole, smoke puff, and impact flash at ", impact_pos)
 
 func _create_bullet_hole_texture() -> ImageTexture:
 	"""Create a simple circular bullet hole texture"""

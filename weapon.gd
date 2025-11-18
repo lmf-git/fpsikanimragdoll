@@ -122,13 +122,10 @@ func shoot(from_position: Vector3, direction: Vector3) -> Dictionary:
 	var result = space_state.intersect_ray(query)
 
 	if result:
-		print("Shot hit: ", result.collider.name, " at ", result.position)
-
 		# Check if we hit a PhysicalBone3D (for partial ragdoll)
 		var bone_name = ""
 		if result.collider is PhysicalBone3D:
 			bone_name = result.collider.bone_name
-			print("  Hit bone: ", bone_name)
 
 		# Return hit info
 		return {
