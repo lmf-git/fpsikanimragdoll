@@ -2447,6 +2447,9 @@ func _update_weapon_to_hand():
 	# Weapon points in camera forward direction, ignoring hand bone rotation
 	var camera_basis = active_camera.global_transform.basis
 
+	# Get IK targets node for precise hand positioning
+	var ik_targets_node = get_node_or_null("IKTargets")
+
 	# Use IK target position instead of bone position for more precise placement
 	# This eliminates gap between hand and weapon
 	var hand_position: Vector3
