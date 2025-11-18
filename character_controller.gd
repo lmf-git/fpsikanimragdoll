@@ -42,6 +42,7 @@ var is_running: bool = false
 @export var camera_mode: int = 0  # 0 = FPS, 1 = TPS
 @export var max_camera_pitch_up: float = 70.0  # Maximum degrees to look up
 @export var max_camera_pitch_down: float = 80.0  # Maximum degrees to look down
+var show_model_in_fps: bool = false  # Toggle for showing model and hiding IK targets in FPS mode (I key)
 
 # Character parts
 @export var skeleton: Skeleton3D
@@ -94,16 +95,16 @@ var is_aim_toggled: bool = false  # Toggle for aiming (Ctrl+RightClick)
 var is_freelook_active: bool = false  # Freelook mode (Alt key held)
 
 # Weapon positioning - skeleton-relative offsets
-@export var aim_weapon_offset: Vector3 = Vector3(0.0, 0.45, -0.55)  # Offset when aiming down sights (centered, higher, at realistic arm length)
-@export var ready_weapon_offset: Vector3 = Vector3(0.25, 0.2, -0.5)  # Offset when ready/moving (at realistic arm length)
+@export var aim_weapon_offset: Vector3 = Vector3(0.0, -0.05, -0.6)  # Offset when aiming down sights (centered, at eye level for iron sights)
+@export var ready_weapon_offset: Vector3 = Vector3(0.25, -0.15, -0.55)  # Offset when ready/moving (lower position, further from body)
 @export var sheathed_weapon_offset: Vector3 = Vector3(0.5, -0.6, 0.2)  # Offset when sheathed at side
 @export var weapon_transition_speed: float = 8.0  # Speed of state transitions
 @export var ik_transition_speed: float = 15.0  # Speed of IK target position transitions
 
 # Weapon sway
-@export var sway_amount: float = 0.05  # Amount of sway
+@export var sway_amount: float = 0.02  # Amount of sway (reduced for more realistic feel)
 @export var sway_speed: float = 5.0  # Speed of sway oscillation
-@export var movement_sway_multiplier: float = 2.0  # Extra sway when moving
+@export var movement_sway_multiplier: float = 1.3  # Extra sway when moving (reduced)
 var sway_time: float = 0.0  # Time accumulator for sway
 var current_sway: Vector3 = Vector3.ZERO  # Current sway offset
 
@@ -390,13 +391,13 @@ func _update_crosshair_positions(center: Vector2, spread: float):
 
 func _update_crosshair(delta: float):
 	"""Update crosshair visibility and spread recovery"""
-	# Hide crosshair when no weapon equipped
-	if not equipped_weapon:
+	# Hide crosshair when no weapon equipped or when aiming down sights
+	if not equipped_weapon or weapon_state == WeaponState.AIMING:
 		for line in crosshair_lines:
 			line.visible = false
 		return
 
-	# Show crosshair when weapon is equipped
+	# Show crosshair when weapon is equipped and not aiming
 	for line in crosshair_lines:
 		line.visible = true
 
@@ -438,7 +439,7 @@ func _stop_arm_ik(right_arm: bool = true, left_arm: bool = false):
 	if right_arm:
 		_stop_ik_chain([right_wrist_ik, right_elbow_ik, right_upper_arm_ik])
 	if left_arm:
-		_stop_ik_chain([left_wrist_ik, left_elbow_ik, left_upper_arm_ik])
+		_stop_ik_chain([left_wrist_ik, left_elbow_ik])  # Left arm only has 2 IK chains
 
 func _start_foot_ik():
 	"""Start both foot IK chains"""
@@ -1069,6 +1070,11 @@ func _input(event):
 			is_aim_toggled = false  # Reset aim toggle when sheathing
 			weapon_state = WeaponState.SHEATHED if is_weapon_sheathed else WeaponState.READY
 
+	# I key to toggle model visibility in FPS mode
+	if event is InputEventKey and event.pressed and event.keycode == KEY_I:
+		show_model_in_fps = !show_model_in_fps
+		_switch_camera(camera_mode)  # Refresh camera settings with new visibility state
+
 	# Alt key for freelook mode (head turns before body)
 	if event is InputEventKey and event.keycode == KEY_ALT:
 		is_freelook_active = event.pressed
@@ -1085,20 +1091,31 @@ func _input(event):
 
 func _switch_camera(mode: int):
 	if fps_camera and tps_camera:
+		var ik_targets_node = get_node_or_null("IKTargets")
+
 		if mode == 0:  # FPS
 			fps_camera.current = true
 			tps_camera.current = false
-			# Use camera cull mask to hide character body in FPS
+			# Use camera cull mask to hide character body in FPS (unless show_model_in_fps is true)
 			# Layer 1 = default, Layer 2 = character body
 			if mesh_instance:
-				mesh_instance.layers = 2
-			# FPS camera only sees layer 1 (not character body)
+				if show_model_in_fps:
+					mesh_instance.layers = 1  # Show model
+				else:
+					mesh_instance.layers = 2  # Hide model
+			# Hide/show IK targets based on show_model_in_fps (inverse of mesh)
+			if ik_targets_node:
+				ik_targets_node.visible = !show_model_in_fps
+			# FPS camera only sees layer 1 (not character body unless toggled)
 			fps_camera.cull_mask = 1
 		else:  # TPS
 			fps_camera.current = false
 			tps_camera.current = true
 			if mesh_instance:
 				mesh_instance.layers = 1
+			# Always show IK targets in TPS mode
+			if ik_targets_node:
+				ik_targets_node.visible = true
 			# TPS camera sees all layers
 			tps_camera.cull_mask = 0xFFFFF
 	else:
@@ -2301,7 +2318,7 @@ func _update_weapon_ik_targets(delta: float):
 		var elbow_pos = anchor_transform.origin + chest_to_hand * 0.5
 
 		# Offset to the right and down for natural arm bend
-		elbow_pos += aim_right * 0.4    # Further outward for weapon holding
+		elbow_pos += aim_right * 0.15   # Moderate outward offset for natural arm position
 		elbow_pos += aim_down * 0.15    # Slightly more downward offset
 		right_elbow_target.global_position = right_elbow_target.global_position.lerp(elbow_pos, ik_transition_speed * delta)
 
