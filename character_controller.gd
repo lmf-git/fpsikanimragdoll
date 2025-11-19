@@ -2497,26 +2497,30 @@ func _update_weapon_to_hand():
 		var weapon_center_pos = anchor_transform.origin + camera_basis * aim_weapon_offset
 
 		# Adjust for grip offset so grip aligns with hands
+		var target_weapon_pos: Vector3
 		if equipped_weapon.main_grip:
 			var grip_local_pos = equipped_weapon.main_grip.position
 			# Zero Y to keep weapon at correct height
 			grip_local_pos.y = 0
 			var grip_offset_rotated = camera_basis * grip_local_pos
-			equipped_weapon.global_position = weapon_center_pos - grip_offset_rotated
+			target_weapon_pos = weapon_center_pos - grip_offset_rotated
 		else:
-			equipped_weapon.global_position = weapon_center_pos
+			target_weapon_pos = weapon_center_pos
+
+		# Smooth transition to ADS position to prevent glitching
+		equipped_weapon.global_position = equipped_weapon.global_position.lerp(target_weapon_pos, weapon_transition_speed * delta)
 	else:
-		# When not aiming: weapon follows hand position
-		var ik_targets_node = get_node_or_null("IKTargets")
+		# When not aiming: weapon follows actual hand bone position after IK
+		# Use the hand bone position from skeleton (after IK is applied), not the IK target
 		var hand_position: Vector3
-		if ik_targets_node:
-			var right_hand_target = ik_targets_node.get_node_or_null("RightHandTarget")
-			if right_hand_target:
-				hand_position = right_hand_target.global_position
-			else:
-				hand_position = right_hand_attachment.global_transform.origin if right_hand_attachment else global_position
+		if right_hand_attachment:
+			# BoneAttachment3D automatically follows the bone after IK is applied
+			hand_position = right_hand_attachment.global_transform.origin
+		elif right_hand_bone_id >= 0:
+			# Fallback: read hand bone position directly from skeleton
+			hand_position = skeleton.global_transform * skeleton.get_bone_global_pose(right_hand_bone_id).origin
 		else:
-			hand_position = right_hand_attachment.global_transform.origin if right_hand_attachment else global_position
+			hand_position = global_position
 
 		# Position weapon at hand location with grip offset
 		if equipped_weapon.main_grip:
