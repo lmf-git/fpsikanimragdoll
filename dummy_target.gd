@@ -25,6 +25,19 @@ func _ready():
 	if tps_camera:
 		tps_camera.queue_free()
 
+	# CRITICAL: Start physics simulation on skeleton so physical bones become collidable
+	# Without this, raycasts cannot hit PhysicalBone3D nodes
+	# Set very high damping so bones stay in place until hit with force
+	if skeleton:
+		skeleton.physical_bones_start_simulation()
+		print("Dummy target: Started physics simulation for hit detection")
+
+		# Set high damping on all physical bones so they stay in place
+		for child in skeleton.get_children():
+			if child is PhysicalBone3D:
+				child.linear_damp = 10.0  # Very high damping keeps bones from moving
+				child.angular_damp = 10.0  # until hit with significant force
+
 	# Set up as stationary target
 	print("Dummy target ready: ", name)
 
@@ -52,11 +65,10 @@ func _apply_partial_ragdoll(bone_name: String, impulse: Vector3):
 
 	print("  Found physical bone: ", physical_bone.name)
 
-	# Start global physics simulation if not already active
-	# This is needed for PhysicalBone3D nodes to be collidable
-	if active_ragdoll_bones.is_empty():
-		skeleton.physical_bones_start_simulation()
-		print("  Started skeleton physics simulation")
+	# Physics simulation is already running (started in _ready for hit detection)
+	# Just reduce damping on hit bones so they can move naturally
+	physical_bone.linear_damp = 0.3  # Restore normal damping for natural movement
+	physical_bone.angular_damp = 0.5
 
 	# If bone is already in active list, just add more impulse
 	if physical_bone in active_ragdoll_bones:
@@ -131,18 +143,23 @@ func _enable_connected_bones(bone_name: String, impulse: Vector3):
 
 		if physical_bone and physical_bone not in active_ragdoll_bones:
 			active_ragdoll_bones.append(physical_bone)
+			# Reduce damping so bone can move
+			physical_bone.linear_damp = 0.3
+			physical_bone.angular_damp = 0.5
 			physical_bone.apply_central_impulse(impulse * 0.3)  # Weaker impulse on connected bones
 
 func _recover_all_bones():
 	"""Recover all active ragdoll bones"""
 	print("Recovering ", active_ragdoll_bones.size(), " bones...")
 
-	# Stop physics simulation on the skeleton
-	if not ragdoll_enabled and skeleton:
-		skeleton.physical_bones_stop_simulation()
+	# Restore high damping on all recovered bones to keep them in place
+	for bone in active_ragdoll_bones:
+		if is_instance_valid(bone):
+			bone.linear_damp = 10.0  # High damping to return to rest pose
+			bone.angular_damp = 10.0
 
 	active_ragdoll_bones.clear()
-	print("All bones recovered")
+	print("All bones recovered - high damping restored")
 
 func take_damage(amount: float):
 	"""Take damage (for future health system)"""

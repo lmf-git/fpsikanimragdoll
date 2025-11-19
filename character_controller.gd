@@ -2508,7 +2508,8 @@ func _update_weapon_to_hand():
 			target_weapon_pos = weapon_center_pos
 
 		# Smooth transition to ADS position to prevent glitching
-		equipped_weapon.global_position = equipped_weapon.global_position.lerp(target_weapon_pos, weapon_transition_speed * delta)
+		# Use ik_transition_speed so weapon and hands move together
+		equipped_weapon.global_position = equipped_weapon.global_position.lerp(target_weapon_pos, ik_transition_speed * delta)
 	else:
 		# When not aiming: weapon follows actual hand bone position after IK
 		# Use the hand bone position from skeleton (after IK is applied), not the IK target
