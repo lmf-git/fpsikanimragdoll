@@ -95,11 +95,11 @@ var is_aim_toggled: bool = false  # Toggle for aiming (Ctrl+RightClick)
 var is_freelook_active: bool = false  # Freelook mode (Alt key held)
 
 # Weapon positioning - skeleton-relative offsets
-@export var aim_weapon_offset: Vector3 = Vector3(0.0, 0.15, -0.6)  # Offset when aiming down sights (centered, raised for proper sight picture)
+@export var aim_weapon_offset: Vector3 = Vector3(0.0, 0.25, -0.7)  # Offset when aiming down sights (centered, raised higher and further forward)
 @export var ready_weapon_offset: Vector3 = Vector3(0.25, -0.15, -0.55)  # Offset when ready/moving (lower position, further from body)
 @export var sheathed_weapon_offset: Vector3 = Vector3(0.5, -0.6, 0.2)  # Offset when sheathed at side
 @export var weapon_transition_speed: float = 8.0  # Speed of state transitions
-@export var ik_transition_speed: float = 15.0  # Speed of IK target position transitions
+@export var ik_transition_speed: float = 10.0  # Speed of IK target position transitions (reduced for smoother movement)
 
 # Weapon sway
 @export var sway_amount: float = 0.02  # Amount of sway (reduced for more realistic feel)
@@ -563,8 +563,8 @@ func _create_ik_system():
 		left_elbow_ik.name = "LeftElbowIK"
 		left_elbow_ik.root_bone = "characters3d.com___L_Shoulder"
 		left_elbow_ik.tip_bone = "characters3d.com___L_Lower_Arm"
-		left_elbow_ik.interpolation = 1.0  # Instant IK solving for responsive weapon movement
-		left_elbow_ik.max_iterations = 20
+		left_elbow_ik.interpolation = 0.7  # Smooth IK solving to reduce jitter
+		left_elbow_ik.max_iterations = 15
 		skeleton.add_child(left_elbow_ik)
 		left_elbow_ik.set_target_node(left_elbow_target.get_path())
 		print("Created LeftElbowIK (Shoulder -> Lower_Arm)")
@@ -577,8 +577,8 @@ func _create_ik_system():
 		left_wrist_ik.name = "LeftWristIK"
 		left_wrist_ik.root_bone = "characters3d.com___L_Lower_Arm"
 		left_wrist_ik.tip_bone = "characters3d.com___L_Hand"
-		left_wrist_ik.interpolation = 1.0
-		left_wrist_ik.max_iterations = 20
+		left_wrist_ik.interpolation = 0.7  # Smooth IK solving to reduce jitter
+		left_wrist_ik.max_iterations = 15
 		skeleton.add_child(left_wrist_ik)
 		left_wrist_ik.set_target_node(left_hand_final_target.get_path())
 		print("Created LeftWristIK (Lower_Arm -> Hand)")
@@ -596,8 +596,8 @@ func _create_ik_system():
 	right_upper_arm_ik.name = "RightUpperArmIK"
 	right_upper_arm_ik.root_bone = "characters3d.com___R_Shoulder"
 	right_upper_arm_ik.tip_bone = "characters3d.com___R_Upper_Arm"
-	right_upper_arm_ik.interpolation = 1.0
-	right_upper_arm_ik.max_iterations = 20
+	right_upper_arm_ik.interpolation = 0.7  # Smooth IK solving to reduce jitter
+	right_upper_arm_ik.max_iterations = 15
 	skeleton.add_child(right_upper_arm_ik)
 	right_upper_arm_ik.set_target_node(right_upper_arm_target.get_path())
 	print("Created RightUpperArmIK (Shoulder -> Upper_Arm)")
@@ -608,8 +608,8 @@ func _create_ik_system():
 		right_elbow_ik.name = "RightElbowIK"
 		right_elbow_ik.root_bone = "characters3d.com___R_Upper_Arm"
 		right_elbow_ik.tip_bone = "characters3d.com___R_Lower_Arm"
-		right_elbow_ik.interpolation = 1.0
-		right_elbow_ik.max_iterations = 20
+		right_elbow_ik.interpolation = 0.7  # Smooth IK solving to reduce jitter
+		right_elbow_ik.max_iterations = 15
 		skeleton.add_child(right_elbow_ik)
 		right_elbow_ik.set_target_node(right_elbow_target.get_path())
 		print("Created RightElbowIK (Upper_Arm -> Lower_Arm)")
@@ -621,8 +621,8 @@ func _create_ik_system():
 		right_wrist_ik.name = "RightWristIK"
 		right_wrist_ik.root_bone = "characters3d.com___R_Lower_Arm"
 		right_wrist_ik.tip_bone = "characters3d.com___R_Hand"
-		right_wrist_ik.interpolation = 1.0
-		right_wrist_ik.max_iterations = 20
+		right_wrist_ik.interpolation = 0.7  # Smooth IK solving to reduce jitter
+		right_wrist_ik.max_iterations = 15
 		skeleton.add_child(right_wrist_ik)
 		right_wrist_ik.set_target_node(right_hand_final_target.get_path())
 		print("Created RightWristIK (Lower_Arm -> Hand)")
