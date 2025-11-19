@@ -514,6 +514,8 @@ func _apply_weapon_grip_transform(weapon: Weapon):
 		var rotation_offset = Basis().rotated(Vector3.RIGHT, deg_to_rad(-90))
 		weapon.transform.basis = rotation_offset
 		var grip_offset_rotated = weapon.transform.basis * grip_local_pos
+		# Zero out Y component to prevent weapon from being positioned below hand
+		grip_offset_rotated.y = 0
 		weapon.transform.origin = -grip_offset_rotated
 
 		# Apply weapon-specific offset (in local space: X- = left, Z+ = forward)
@@ -2213,45 +2215,30 @@ func _update_weapon_ik_targets(delta: float):
 	# Position right hand IK target to follow FULL CAMERA DIRECTION
 	var right_hand_target = ik_targets_node.get_node_or_null("RightHandTarget")
 	if right_hand_target:
-		# When weapon is equipped, position hand at the weapon's grip
-		# This ensures the hand stays at the weapon grip instead of being pulled away
-		if equipped_weapon and equipped_weapon.main_grip:
-			# Position hand IK target at the weapon's main grip position
-			var grip_global_pos = equipped_weapon.main_grip.global_position
-			right_hand_target.global_position = right_hand_target.global_position.lerp(grip_global_pos, ik_transition_speed * delta)
+		var base_offset = target_offset + current_sway  # Add sway for natural movement
 
-			# Set hand rotation based on weapon orientation
-			var camera_basis = active_camera.global_transform.basis
-			var hand_basis = camera_basis
-			var palm_rotation = Basis(Vector3(0, 0, 1), deg_to_rad(90))  # Rotate 90° around forward axis
-			hand_basis = hand_basis * palm_rotation
-			right_hand_target.global_transform.basis = hand_basis
-		else:
-			# No weapon equipped - use camera-relative positioning
-			var base_offset = target_offset + current_sway  # Add sway for natural movement
+		# Use FULL camera transform basis (includes pitch, yaw, roll)
+		# This ensures hand moves to keep weapon aligned with camera line of sight
+		var camera_basis = active_camera.global_transform.basis
 
-			# Use FULL camera transform basis (includes pitch, yaw, roll)
-			# This ensures hand moves to keep weapon aligned with camera line of sight
-			var camera_basis = active_camera.global_transform.basis
+		# Apply hand recoil to offset
+		var final_offset = base_offset + current_hand_recoil
+		var target_pos = anchor_transform.origin + camera_basis * final_offset
 
-			# Apply hand recoil to offset
-			var final_offset = base_offset + current_hand_recoil
-			var target_pos = anchor_transform.origin + camera_basis * final_offset
+		# Smooth transition to target position
+		right_hand_target.global_position = right_hand_target.global_position.lerp(target_pos, ik_transition_speed * delta)
 
-			# Smooth transition to target position
-			right_hand_target.global_position = right_hand_target.global_position.lerp(target_pos, ik_transition_speed * delta)
+		# Set hand rotation to orient palm correctly for grip
+		# Palm should face left (toward body), fingers point forward
+		# Camera basis gives us the weapon orientation, then rotate hand to grip position
+		var hand_basis = camera_basis
 
-			# Set hand rotation to orient palm correctly for grip
-			# Palm should face left (toward body), fingers point forward
-			# Camera basis gives us the weapon orientation, then rotate hand to grip position
-			var hand_basis = camera_basis
+		# Rotate hand so palm faces inward (left) for proper grip
+		# Rotate around Z axis (forward) to turn palm inward
+		var palm_rotation = Basis(Vector3(0, 0, 1), deg_to_rad(90))  # Rotate 90° around forward axis
+		hand_basis = hand_basis * palm_rotation
 
-			# Rotate hand so palm faces inward (left) for proper grip
-			# Rotate around Z axis (forward) to turn palm inward
-			var palm_rotation = Basis(Vector3(0, 0, 1), deg_to_rad(90))  # Rotate 90° around forward axis
-			hand_basis = hand_basis * palm_rotation
-
-			right_hand_target.global_transform.basis = hand_basis
+		right_hand_target.global_transform.basis = hand_basis
 
 	# Update left hand IK target for two-handed weapons (rifles) and pistols when aiming
 	var left_hand_target = ik_targets_node.get_node_or_null("LeftHandTarget")
