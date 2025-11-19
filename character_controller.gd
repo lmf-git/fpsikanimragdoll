@@ -2232,8 +2232,8 @@ func _update_weapon_ik_targets(delta: float):
 		var hand_basis = camera_basis
 
 		# Rotate hand so palm faces inward (left) for proper grip
-		# Rotate around X axis (right) to orient hand correctly
-		var palm_rotation = Basis(Vector3(1, 0, 0), deg_to_rad(90))  # Rotate 90° around right axis
+		# Rotate around Z axis (forward) to turn palm inward
+		var palm_rotation = Basis(Vector3(0, 0, 1), deg_to_rad(90))  # Rotate 90° around forward axis
 		hand_basis = hand_basis * palm_rotation
 
 		right_hand_target.global_transform.basis = hand_basis
@@ -2268,7 +2268,7 @@ func _update_weapon_ik_targets(delta: float):
 
 			# Set left hand rotation for foregrip (palm faces right, opposite of right hand)
 			var left_hand_basis = camera_basis
-			var left_palm_rotation = Basis(Vector3(1, 0, 0), deg_to_rad(-90))  # Rotate -90° around right axis
+			var left_palm_rotation = Basis(Vector3(0, 0, 1), deg_to_rad(-90))  # Rotate -90° around forward axis
 			left_hand_basis = left_hand_basis * left_palm_rotation
 			left_hand_target.global_transform.basis = left_hand_basis
 		elif weapon_state == WeaponState.AIMING:
@@ -2288,7 +2288,7 @@ func _update_weapon_ik_targets(delta: float):
 
 			# Set left hand rotation for support grip (palm faces right and up to cup under grip)
 			var left_hand_basis = camera_basis
-			var left_palm_rotation = Basis(Vector3(1, 0, 0), deg_to_rad(-90))  # Rotate -90° around right axis
+			var left_palm_rotation = Basis(Vector3(0, 0, 1), deg_to_rad(-90))  # Rotate -90° around forward axis
 			left_hand_basis = left_hand_basis * left_palm_rotation
 			left_hand_target.global_transform.basis = left_hand_basis
 
