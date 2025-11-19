@@ -29,11 +29,15 @@ func _ready():
 	print("Dummy target ready: ", name)
 
 func _apply_partial_ragdoll(bone_name: String, impulse: Vector3):
-	"""Override to track active ragdoll bones"""
+	"""Override to track active ragdoll bones and apply damage"""
 	if not skeleton:
 		return
 
-	print("Dummy target hit on bone: ", bone_name)
+	print("Dummy target hit on bone: ", bone_name, " with impulse: ", impulse.length())
+
+	# Apply damage based on impulse strength
+	var damage_amount = impulse.length() * 2.0  # Scale impulse to damage
+	take_damage(damage_amount)
 
 	# Find the physical bone
 	var physical_bone: PhysicalBone3D = null
@@ -43,23 +47,29 @@ func _apply_partial_ragdoll(bone_name: String, impulse: Vector3):
 			break
 
 	if not physical_bone:
-		print("  Physical bone not found!")
+		print("  Physical bone not found for: ", bone_name)
 		return
 
-	# If bone is already simulating, don't add it again
-	if physical_bone in active_ragdoll_bones:
-		# Just add more impulse
-		physical_bone.apply_central_impulse(impulse)
-		return
+	print("  Found physical bone: ", physical_bone.name)
 
-	# Start physics simulation if not already active
+	# Start global physics simulation if not already active
+	# This is needed for PhysicalBone3D nodes to be collidable
 	if active_ragdoll_bones.is_empty():
 		skeleton.physical_bones_start_simulation()
+		print("  Started skeleton physics simulation")
 
+	# If bone is already in active list, just add more impulse
+	if physical_bone in active_ragdoll_bones:
+		physical_bone.apply_central_impulse(impulse)
+		print("  Applied additional impulse to active bone")
+		return
+
+	# Add bone to active list
 	active_ragdoll_bones.append(physical_bone)
 
 	# Apply impulse to the hit bone
 	physical_bone.apply_central_impulse(impulse)
+	print("  Applied impulse to new bone: ", impulse)
 
 	# Also enable nearby connected bones for more realistic effect
 	_enable_connected_bones(bone_name, impulse * 0.5)

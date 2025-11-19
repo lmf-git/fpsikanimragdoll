@@ -24,7 +24,7 @@ enum FireMode { SEMI_AUTO, FULL_AUTO }
 # Shooting properties
 @export var damage: float = 25.0
 @export var max_range: float = 100.0
-@export var knockback_force: float = 5.0
+@export var knockback_force: float = 15.0  # Increased for more visible ragdoll response
 @export var fire_rate: float = 0.2  # Seconds between shots
 @export var muzzle_point: Node3D  # Where bullets come from
 
@@ -123,10 +123,16 @@ func shoot(from_position: Vector3, direction: Vector3) -> Dictionary:
 	var result = space_state.intersect_ray(query)
 
 	if result:
+		# Debug output for hit detection
+		print("Weapon hit: ", result.collider.name, " (type: ", result.collider.get_class(), ")")
+
 		# Check if we hit a PhysicalBone3D (for partial ragdoll)
 		var bone_name = ""
 		if result.collider is PhysicalBone3D:
 			bone_name = result.collider.bone_name
+			print("  Hit physical bone: ", bone_name)
+		else:
+			print("  Not a physical bone (collider type: ", result.collider.get_class(), ")")
 
 		# Return hit info
 		return {
