@@ -99,7 +99,7 @@ var is_freelook_active: bool = false  # Freelook mode (Alt key held)
 @export var ready_weapon_offset: Vector3 = Vector3(0.25, -0.15, -0.55)  # Offset when ready/moving (lower position, further from body)
 @export var sheathed_weapon_offset: Vector3 = Vector3(0.5, -0.6, 0.2)  # Offset when sheathed at side
 @export var weapon_transition_speed: float = 8.0  # Speed of state transitions
-@export var ik_transition_speed: float = 10.0  # Speed of IK target position transitions (reduced for smoother movement)
+@export var ik_transition_speed: float = 12.0  # Speed of IK target position transitions (balanced for smoothness and responsiveness)
 
 # Weapon sway
 @export var sway_amount: float = 0.02  # Amount of sway (reduced for more realistic feel)
@@ -391,15 +391,21 @@ func _update_crosshair_positions(center: Vector2, spread: float):
 
 func _update_crosshair(delta: float):
 	"""Update crosshair visibility and spread recovery"""
+	# Safety check - ensure crosshair lines exist
+	if crosshair_lines.is_empty():
+		return
+
 	# Hide crosshair when no weapon equipped or when aiming down sights
 	if not equipped_weapon or weapon_state == WeaponState.AIMING:
 		for line in crosshair_lines:
-			line.visible = false
+			if line:
+				line.visible = false
 		return
 
 	# Show crosshair when weapon is equipped and not aiming
 	for line in crosshair_lines:
-		line.visible = true
+		if line:
+			line.visible = true
 
 	# Recover spread over time
 	if current_spread > base_spread:
@@ -2226,8 +2232,8 @@ func _update_weapon_ik_targets(delta: float):
 		var hand_basis = camera_basis
 
 		# Rotate hand so palm faces inward (left) for proper grip
-		# This rotates around the Z axis (forward) to turn the palm from facing down to facing left
-		var palm_rotation = Basis(Vector3(0, 0, 1), deg_to_rad(90))  # Rotate 90° to face palm left
+		# Rotate around X axis (right) to orient hand correctly
+		var palm_rotation = Basis(Vector3(1, 0, 0), deg_to_rad(90))  # Rotate 90° around right axis
 		hand_basis = hand_basis * palm_rotation
 
 		right_hand_target.global_transform.basis = hand_basis
@@ -2262,7 +2268,7 @@ func _update_weapon_ik_targets(delta: float):
 
 			# Set left hand rotation for foregrip (palm faces right, opposite of right hand)
 			var left_hand_basis = camera_basis
-			var left_palm_rotation = Basis(Vector3(0, 0, 1), deg_to_rad(-90))  # Rotate -90° to face palm right
+			var left_palm_rotation = Basis(Vector3(1, 0, 0), deg_to_rad(-90))  # Rotate -90° around right axis
 			left_hand_basis = left_hand_basis * left_palm_rotation
 			left_hand_target.global_transform.basis = left_hand_basis
 		elif weapon_state == WeaponState.AIMING:
@@ -2282,7 +2288,7 @@ func _update_weapon_ik_targets(delta: float):
 
 			# Set left hand rotation for support grip (palm faces right and up to cup under grip)
 			var left_hand_basis = camera_basis
-			var left_palm_rotation = Basis(Vector3(0, 0, 1), deg_to_rad(-90))  # Face palm right
+			var left_palm_rotation = Basis(Vector3(1, 0, 0), deg_to_rad(-90))  # Rotate -90° around right axis
 			left_hand_basis = left_hand_basis * left_palm_rotation
 			left_hand_target.global_transform.basis = left_hand_basis
 
