@@ -95,7 +95,7 @@ var is_aim_toggled: bool = false  # Toggle for aiming (Ctrl+RightClick)
 var is_freelook_active: bool = false  # Freelook mode (Alt key held)
 
 # Weapon positioning - skeleton-relative offsets
-@export var aim_weapon_offset: Vector3 = Vector3(0.0, -0.05, -0.6)  # Offset when aiming down sights (centered, at eye level for iron sights)
+@export var aim_weapon_offset: Vector3 = Vector3(0.0, 0.15, -0.6)  # Offset when aiming down sights (centered, raised for proper sight picture)
 @export var ready_weapon_offset: Vector3 = Vector3(0.25, -0.15, -0.55)  # Offset when ready/moving (lower position, further from body)
 @export var sheathed_weapon_offset: Vector3 = Vector3(0.5, -0.6, 0.2)  # Offset when sheathed at side
 @export var weapon_transition_speed: float = 8.0  # Speed of state transitions
