@@ -2215,30 +2215,37 @@ func _update_weapon_ik_targets(delta: float):
 	# Position right hand IK target to follow FULL CAMERA DIRECTION
 	var right_hand_target = ik_targets_node.get_node_or_null("RightHandTarget")
 	if right_hand_target:
-		var base_offset = target_offset + current_sway  # Add sway for natural movement
+		# When aiming down sight, position hand at weapon grip (weapon is centered in view)
+		# When not aiming, position hand by camera offset (weapon follows hand)
+		if weapon_state == WeaponState.AIMING and equipped_weapon and equipped_weapon.main_grip:
+			# ADS: Hand follows weapon grip (weapon is centered)
+			var grip_global_pos = equipped_weapon.main_grip.global_position
+			right_hand_target.global_position = right_hand_target.global_position.lerp(grip_global_pos, ik_transition_speed * delta)
 
-		# Use FULL camera transform basis (includes pitch, yaw, roll)
-		# This ensures hand moves to keep weapon aligned with camera line of sight
-		var camera_basis = active_camera.global_transform.basis
+			# Hand rotation matches weapon orientation
+			var camera_basis = active_camera.global_transform.basis
+			var hand_basis = camera_basis
+			var palm_rotation = Basis(Vector3(0, 0, 1), deg_to_rad(90))
+			hand_basis = hand_basis * palm_rotation
+			right_hand_target.global_transform.basis = hand_basis
+		else:
+			# Hip fire: Hand positioned by camera offset (weapon follows hand)
+			var base_offset = target_offset + current_sway
 
-		# Apply hand recoil to offset
-		var final_offset = base_offset + current_hand_recoil
-		var target_pos = anchor_transform.origin + camera_basis * final_offset
+			var camera_basis = active_camera.global_transform.basis
 
-		# Smooth transition to target position
-		right_hand_target.global_position = right_hand_target.global_position.lerp(target_pos, ik_transition_speed * delta)
+			# Apply hand recoil to offset
+			var final_offset = base_offset + current_hand_recoil
+			var target_pos = anchor_transform.origin + camera_basis * final_offset
 
-		# Set hand rotation to orient palm correctly for grip
-		# Palm should face left (toward body), fingers point forward
-		# Camera basis gives us the weapon orientation, then rotate hand to grip position
-		var hand_basis = camera_basis
+			# Smooth transition to target position
+			right_hand_target.global_position = right_hand_target.global_position.lerp(target_pos, ik_transition_speed * delta)
 
-		# Rotate hand so palm faces inward (left) for proper grip
-		# Rotate around Z axis (forward) to turn palm inward
-		var palm_rotation = Basis(Vector3(0, 0, 1), deg_to_rad(90))  # Rotate 90° around forward axis
-		hand_basis = hand_basis * palm_rotation
-
-		right_hand_target.global_transform.basis = hand_basis
+			# Set hand rotation to orient palm correctly for grip
+			var hand_basis = camera_basis
+			var palm_rotation = Basis(Vector3(0, 0, 1), deg_to_rad(90))
+			hand_basis = hand_basis * palm_rotation
+			right_hand_target.global_transform.basis = hand_basis
 
 	# Update left hand IK target for two-handed weapons (rifles) and pistols when aiming
 	var left_hand_target = ik_targets_node.get_node_or_null("LeftHandTarget")
@@ -2472,32 +2479,52 @@ func _update_weapon_to_hand():
 	# Weapon points in camera forward direction, ignoring hand bone rotation
 	var camera_basis = active_camera.global_transform.basis
 
-	# Get IK targets node for precise hand positioning
-	var ik_targets_node = get_node_or_null("IKTargets")
-
-	# Use IK target position instead of bone position for more precise placement
-	# This eliminates gap between hand and weapon
-	var hand_position: Vector3
-	if ik_targets_node:
-		var right_hand_target = ik_targets_node.get_node_or_null("RightHandTarget")
-		if right_hand_target:
-			hand_position = right_hand_target.global_position
-		else:
-			hand_position = right_hand_attachment.global_transform.origin if right_hand_attachment else global_position
-	else:
-		hand_position = right_hand_attachment.global_transform.origin if right_hand_attachment else global_position
-
 	# Set weapon to face camera direction (no lag, always centered)
 	equipped_weapon.global_transform.basis = camera_basis
 
-	# Position weapon at hand location with grip offset
-	if equipped_weapon.main_grip and equipped_weapon.main_grip.position != null:
-		var grip_local_pos = equipped_weapon.main_grip.position
-		var grip_offset_rotated = camera_basis * grip_local_pos
-		equipped_weapon.global_position = hand_position - grip_offset_rotated
+	# Position weapon differently based on weapon state
+	if weapon_state == WeaponState.AIMING:
+		# When aiming down sight: center weapon in camera view
+		# Position weapon in front of camera based on aim offset
+		var anchor_transform: Transform3D
+		if chest_bone_id >= 0:
+			anchor_transform = skeleton.global_transform * skeleton.get_bone_global_pose(chest_bone_id)
+		else:
+			anchor_transform = global_transform
+
+		var weapon_center_pos = anchor_transform.origin + camera_basis * aim_weapon_offset
+
+		# Adjust for grip offset so grip aligns with hands
+		if equipped_weapon.main_grip:
+			var grip_local_pos = equipped_weapon.main_grip.position
+			# Zero Y to keep weapon at correct height
+			grip_local_pos.y = 0
+			var grip_offset_rotated = camera_basis * grip_local_pos
+			equipped_weapon.global_position = weapon_center_pos - grip_offset_rotated
+		else:
+			equipped_weapon.global_position = weapon_center_pos
 	else:
-		# No grip point - use weapon origin
-		equipped_weapon.global_position = hand_position
+		# When not aiming: weapon follows hand position
+		var ik_targets_node = get_node_or_null("IKTargets")
+		var hand_position: Vector3
+		if ik_targets_node:
+			var right_hand_target = ik_targets_node.get_node_or_null("RightHandTarget")
+			if right_hand_target:
+				hand_position = right_hand_target.global_position
+			else:
+				hand_position = right_hand_attachment.global_transform.origin if right_hand_attachment else global_position
+		else:
+			hand_position = right_hand_attachment.global_transform.origin if right_hand_attachment else global_position
+
+		# Position weapon at hand location with grip offset
+		if equipped_weapon.main_grip:
+			var grip_local_pos = equipped_weapon.main_grip.position
+			# Zero Y to keep weapon at correct height
+			grip_local_pos.y = 0
+			var grip_offset_rotated = camera_basis * grip_local_pos
+			equipped_weapon.global_position = hand_position - grip_offset_rotated
+		else:
+			equipped_weapon.global_position = hand_position
 
 # ============================================================================
 # MAIN LOOP - PROCESS (Visual Updates & IK)
