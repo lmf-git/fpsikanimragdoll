@@ -2309,7 +2309,7 @@ func _update_weapon_ik_targets(delta: float):
 	var right_wrist_target = ik_targets_node.get_node_or_null("RightWristTarget")
 
 	# RIGHT ARM: Position upper arm, elbow, and hand targets
-	if right_hand_target and right_upper_arm_target and right_elbow_target and right_wrist_target:
+	if right_hand_target and right_upper_arm_target and right_elbow_target:
 		# Calculate direction from chest to hand target (aim direction)
 		var chest_to_hand = right_hand_target.global_position - anchor_transform.origin
 		var aim_direction = chest_to_hand.normalized()
@@ -2337,10 +2337,10 @@ func _update_weapon_ik_targets(delta: float):
 		elbow_pos += aim_down * 0.15    # Slightly more downward offset
 		right_elbow_target.global_position = right_elbow_target.global_position.lerp(elbow_pos, ik_transition_speed * delta)
 
-		# Wrist target is just for visualization now (wrist IK uses hand_target)
-		# Position it between elbow and hand for visual reference
-		var wrist_pos = right_elbow_target.global_position.lerp(right_hand_target.global_position, 0.6)
-		right_wrist_target.global_position = right_wrist_target.global_position.lerp(wrist_pos, ik_transition_speed * delta)
+		# NOTE: RightWristTarget is not used by IK (RightWristIK uses RightHandTarget instead)
+		# Hide wrist target to avoid confusion - it's no longer positioned
+		if right_wrist_target:
+			right_wrist_target.visible = false
 
 	# FINGER POSITIONING: Disabled - finger IK creates circular dependency with weapon
 	# Hand rotation alone provides proper grip orientation without conflicts
@@ -2375,18 +2375,20 @@ func _update_weapon_ik_targets(delta: float):
 
 			left_elbow_target.global_position = left_elbow_target.global_position.lerp(elbow_pos, ik_transition_speed * delta)
 
-			# Wrist target is just for visualization now (wrist IK uses hand_target)
-			var wrist_pos = left_elbow_target.global_position.lerp(left_hand_target.global_position, 0.6)
-			left_wrist_target.global_position = left_wrist_target.global_position.lerp(wrist_pos, ik_transition_speed * delta)
+			# NOTE: LeftWristTarget is not used by IK (LeftWristIK uses LeftHandTarget instead)
+			# Hide wrist target to avoid confusion
+			if left_wrist_target:
+				left_wrist_target.visible = false
 		else:
 			# Pistol hip fire: left arm stays at rest position
 			var l_elbow_id = skeleton.find_bone("characters3d.com___L_Lower_Arm")
-			var l_wrist_id = skeleton.find_bone("characters3d.com___L_Hand")
-			if l_elbow_id >= 0 and l_wrist_id >= 0:
+			if l_elbow_id >= 0:
 				var left_elbow_rest = skeleton.global_transform * skeleton.get_bone_rest(l_elbow_id).origin
-				var left_wrist_rest = skeleton.global_transform * skeleton.get_bone_rest(l_wrist_id).origin
 				left_elbow_target.global_position = left_elbow_target.global_position.lerp(left_elbow_rest, ik_transition_speed * delta)
-				left_wrist_target.global_position = left_wrist_target.global_position.lerp(left_wrist_rest, ik_transition_speed * delta)
+
+			# Hide wrist target (not used by IK)
+			if left_wrist_target:
+				left_wrist_target.visible = false
 
 func _apply_hand_grip_pose():
 	"""Apply finger bending for weapon grip pose"""
